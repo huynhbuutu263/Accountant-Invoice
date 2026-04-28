@@ -1,0 +1,175 @@
+{
+  "name": "GDT — tra cứu hóa đơn điện tử mua vào (đăng nhập → lọc → tải)",
+  "version": "1.2.0",
+  "description": "Portal https://hoadondientu.gdt.gov.vn (Next.js + Ant Design 3). Selectors trong bản này khớp DOM đã render (snapshot: span#tngay/#dngay DatePicker readonly, div#ttxly ant-select role=combobox, bảng .ant-table-tbody). Không có <select> cho Kết quả kiểm tra — dùng click mở dropdown + chọn item.",
+  "variables": {
+    "gdtHomeUrl": "https://hoadondientu.gdt.gov.vn/",
+    "gdtTraCuuUrl": "https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don",
+    "gdtMst": "",
+    "gdtPassword": "",
+    "gdtMstSelector": "input[type='text']",
+    "gdtPasswordSelector": "input[type='password']",
+    "gdtLoginButtonSelector": "button:has-text('Đăng nhập')",
+    "gdtHydrationPasswordWait": "input[type='password']",
+    "gdtPostTraCuuReadySelector": "button[type='submit']:has-text('Tìm kiếm')",
+    "gdtTabMuaVaoSelector": ".ant-tabs-tab:has-text('mua vào')",
+    "gdtKetQuaKiemTraCombobox": "#ttxly [role='combobox']",
+    "gdtKetQuaKiemTraDropdownOption": ".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-dropdown-menu-item:has-text('Đã cấp mã hóa đơn')",
+    "gdtTuNgaySelector": "#tngay input.ant-calendar-picker-input",
+    "gdtDenNgaySelector": "#dngay input.ant-calendar-picker-input",
+    "gdtTimKiemButton": "button[type='submit']:has-text('Tìm kiếm')",
+    "gdtResultRowSelector": ".ant-table-tbody tr",
+    "gdtPageSizeSelect": "xpath=//select[preceding::*[contains(.,'15')]]",
+    "gdtBulkExportButton": "button[title*='Xuất'], [aria-label*='Xuất'], .dx-icon-export",
+    "gdtRowDownloadSelector": ".ant-table-tbody tr:nth-child({{rowIndex}}) a, .ant-table-tbody tr:nth-child({{rowIndex}}) button"
+  },
+  "steps": [
+    {
+      "name": "1 — Mở trang chủ (Next.js — bắt buộc trước tra cứu)",
+      "action": "navigate",
+      "value": "{{gdtHomeUrl}}",
+      "waitUntil": "domcontentloaded",
+      "timeoutMs": 120000,
+      "retry": { "count": 3, "backoffMs": [ 2000, 5000, 10000 ] },
+      "comment": "Không mở thẳng tra-cuu-hoa-don khi chưa có JWT: server trả 403 và không có DOM form trong HTML tĩnh."
+    },
+    {
+      "name": "Chờ JS render form đăng nhập",
+      "action": "wait",
+      "selector": "{{gdtHydrationPasswordWait}}",
+      "timeoutMs": 90000,
+      "comment": "Đợi ô mật khẩu xuất hiện = Next/React đã hydrate. Nếu trùng nhiều input[type=password], thu hẹp selector trong variables."
+    },
+    {
+      "name": "2 — Nhập MST (tài khoản)",
+      "action": "fill",
+      "selector": "{{gdtMstSelector}}",
+      "value": "{{gdtMst}}",
+      "timeoutMs": 20000,
+      "comment": "Điền gdtMst trong variables. Nếu có nhiều ô text, dùng locator cụ thể hơn (vd placeholder, name, data-testid)."
+    },
+    {
+      "name": "2 — Nhập mật khẩu",
+      "action": "fill",
+      "selector": "{{gdtPasswordSelector}}",
+      "value": "{{gdtPassword}}",
+      "timeoutMs": 20000
+    },
+    {
+      "name": "2 — Bấm Đăng nhập",
+      "action": "click",
+      "selector": "{{gdtLoginButtonSelector}}",
+      "timeoutMs": 30000,
+      "retry": { "count": 2, "backoffMs": [ 2000, 4000 ] }
+    },
+    {
+      "name": "Chờ sau đăng nhập (chuyển trang / menu)",
+      "action": "wait",
+      "selector": "body",
+      "timeoutMs": 60000
+    },
+    {
+      "name": "Vào URL tra cứu (đã có session)",
+      "action": "navigate",
+      "value": "{{gdtTraCuuUrl}}",
+      "waitUntil": "domcontentloaded",
+      "timeoutMs": 120000
+    },
+    {
+      "name": "Chờ form tra cứu hiển thị (tránh 403 / trang trống)",
+      "action": "wait",
+      "selector": "{{gdtPostTraCuuReadySelector}}",
+      "timeoutMs": 120000,
+      "comment": "Nút submit Tìm kiếm là dấu hiệu UI tra cứu đã render. Nếu fail, kiểm tra cookie/JWT hoặc chỉnh selector."
+    },
+    {
+      "name": "3 — Tab / nút Hóa đơn điện tử mua vào",
+      "action": "click",
+      "selector": "{{gdtTabMuaVaoSelector}}",
+      "timeoutMs": 30000,
+      "comment": "Nếu mặc định đã là tab mua vào, đặt enabled: false cho bước này."
+    },
+    {
+      "name": "4a — Mở combobox Kết quả kiểm tra (Ant Select)",
+      "action": "click",
+      "selector": "{{gdtKetQuaKiemTraCombobox}}",
+      "timeoutMs": 30000,
+      "comment": "Trường nằm trong #ttxly; không dùng selectOption vì không phải <select> HTML."
+    },
+    {
+      "name": "4b — Chọn Đã cấp mã hóa đơn trong dropdown",
+      "action": "click",
+      "selector": "{{gdtKetQuaKiemTraDropdownOption}}",
+      "timeoutMs": 30000
+    },
+    {
+      "name": "5 — Từ ngày",
+      "action": "fill",
+      "selector": "{{gdtTuNgaySelector}}",
+      "value": "{{fromDateVi}}",
+      "javaScriptFill": true,
+      "clearFirst": false,
+      "timeoutMs": 20000,
+      "comment": "Input readonly (ant-calendar-picker-input); javaScriptFill gán value + dispatch input/change. Nếu React không nhận, thử click mở lịch + chọn ngày (codegen)."
+    },
+    {
+      "name": "5 — Đến ngày",
+      "action": "fill",
+      "selector": "{{gdtDenNgaySelector}}",
+      "value": "{{toDateVi}}",
+      "javaScriptFill": true,
+      "clearFirst": false,
+      "timeoutMs": 20000
+    },
+    {
+      "name": "6 — Tìm kiếm",
+      "action": "click",
+      "selector": "{{gdtTimKiemButton}}",
+      "timeoutMs": 30000
+    },
+    {
+      "name": "Chờ bảng kết quả có dòng",
+      "action": "wait",
+      "selector": "{{gdtResultRowSelector}}",
+      "timeoutMs": 120000,
+      "comment": "Ant Table: hàng trong .ant-table-tbody tr. Nếu grid khác (DevExtreme), đổi gdtResultRowSelector."
+    },
+    {
+      "name": "Tùy chọn — chọn số dòng/trang tối đa (nếu có)",
+      "action": "selectOption",
+      "selector": "{{gdtPageSizeSelect}}",
+      "value": "100",
+      "timeoutMs": 15000,
+      "enabled": false,
+      "comment": "Trên GDT thường là Ant Select (title 15), không phải <select> — bật chỉ sau khi có flow click riêng."
+    },
+    {
+      "name": "Tùy chọn — xuất hàng loạt (một file / XML)",
+      "action": "click",
+      "selector": "{{gdtBulkExportButton}}",
+      "timeoutMs": 30000,
+      "enabled": false,
+      "comment": "Toolbar grid thường là icon; chỉnh selector theo DevTools."
+    },
+    {
+      "name": "Lặp từng dòng — tải từng hóa đơn (chỉnh selector con)",
+      "action": "loop",
+      "loopKind": "rows",
+      "rowSelector": "{{gdtResultRowSelector}}",
+      "rowVariable": "rowIndex",
+      "maxIterations": 500,
+      "comment": "Đếm dòng có thể gồm header — có thể cần tbody tr:not(:first-child) tùy DOM.",
+      "children": [
+        {
+          "name": "Tải file / mở chi tiết dòng {{rowIndex}}",
+          "action": "download",
+          "selector": "{{gdtRowDownloadSelector}}",
+          "savePath": "{{downloadsRoot}}\\gdt\\{{jobId}}\\row_{{rowIndex}}.xml",
+          "timeoutMs": 120000,
+          "onError": "continue",
+          "comment": "Nếu không phải download trực tiếp: đổi thành click + bước download riêng."
+        }
+      ]
+    }
+  ]
+}

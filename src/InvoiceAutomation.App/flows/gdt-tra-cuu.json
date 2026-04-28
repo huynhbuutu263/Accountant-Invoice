@@ -1,0 +1,29 @@
+{
+  "name": "GDT — tra cứu hóa đơn điện tử (template)",
+  "version": "1.0.0",
+  "description": "Starts at the General Department of Taxation e-invoice lookup page. Adjust selectors after inspecting the live page in DevTools.",
+  "variables": {
+    "gdtTraCuuUrl": "https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don"
+  },
+  "steps": [
+    {
+      "name": "Open GDT tra cứu hóa đơn",
+      "action": "navigate",
+      "value": "{{gdtTraCuuUrl}}",
+      "waitUntil": "domcontentloaded",
+      "timeoutMs": 90000,
+      "retry": {
+        "count": 3,
+        "backoffMs": [ 2000, 5000, 10000 ]
+      },
+      "comment": "Portal: https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don"
+    },
+    {
+      "name": "Wait for document",
+      "action": "wait",
+      "selector": "body",
+      "timeoutMs": 30000,
+      "comment": "TODO: replace body with a stable selector (form, tab, table) from the real UI."
+    }
+  ]
+}

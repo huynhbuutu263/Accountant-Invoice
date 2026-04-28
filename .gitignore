@@ -1,0 +1,12 @@
+# Local HTML dumps (may contain JWT/session in __NEXT_DATA__ — never commit)
+src/Webhtml.txt
+src/html.txt
+**/Webhtml*.txt
+
+bin/
+obj/
+.vs/
+*.user
+*.suo
+.env
+.env.*

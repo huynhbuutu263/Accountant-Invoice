@@ -1,0 +1,29 @@
+{
+  "name": "Tra cứu hóa đơn NĐ123 — tracuuhoadon.vn (template)",
+  "version": "1.0.0",
+  "description": "Secondary site for lookup / upload flows. Extend with fill, click, upload, download steps; keep selectors in this file only.",
+  "variables": {
+    "tracuuhoadonUrl": "https://tracuuhoadon.vn/"
+  },
+  "steps": [
+    {
+      "name": "Open tracuuhoadon.vn",
+      "action": "navigate",
+      "value": "{{tracuuhoadonUrl}}",
+      "waitUntil": "domcontentloaded",
+      "timeoutMs": 90000,
+      "retry": {
+        "count": 3,
+        "backoffMs": [ 2000, 5000, 10000 ]
+      },
+      "comment": "Site: https://tracuuhoadon.vn/"
+    },
+    {
+      "name": "Wait for page shell",
+      "action": "wait",
+      "selector": "body",
+      "timeoutMs": 30000,
+      "comment": "TODO: replace with selectors for login, upload, or download UI."
+    }
+  ]
+}

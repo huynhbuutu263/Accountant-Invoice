@@ -1,0 +1,22 @@
+{
+  "name": "Smoke — example.com",
+  "version": "1.0.0",
+  "description": "Minimal flow to verify Playwright and the step engine (no government portal).",
+  "variables": {},
+  "steps": [
+    {
+      "name": "Open example.com",
+      "action": "navigate",
+      "value": "https://example.com",
+      "waitUntil": "domcontentloaded",
+      "timeoutMs": 60000,
+      "retry": { "count": 2, "backoffMs": [ 1000, 3000 ] }
+    },
+    {
+      "name": "Wait for heading",
+      "action": "wait",
+      "selector": "h1",
+      "timeoutMs": 15000
+    }
+  ]
+}
