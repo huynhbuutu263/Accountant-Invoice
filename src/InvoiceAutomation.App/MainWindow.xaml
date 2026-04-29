@@ -48,6 +48,8 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="From" Margin="0,4,12,4" VerticalAlignment="Center" />
                 <DatePicker Grid.Row="0" Grid.Column="1" SelectedDate="{Binding FromDate}" Margin="0,4" />
@@ -62,6 +64,10 @@
                 <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding FlowPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Downloads" Margin="0,4,12,4" VerticalAlignment="Center" />
                 <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding DownloadsRoot, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="MST (username)" Margin="0,4,12,4" VerticalAlignment="Center" />
+                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding GdtMst, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Password" Margin="0,4,12,4" VerticalAlignment="Center" />
+                <PasswordBox Grid.Row="6" Grid.Column="1" x:Name="PasswordInput" Margin="0,4" />
             </Grid>
         </GroupBox>
 

@@ -67,6 +67,13 @@ public partial class MainViewModel : ObservableObject
     private string _invoiceKind = "sales";
 
     [ObservableProperty]
+    private string _gdtMst = "";
+
+    private string _gdtPassword = "";
+
+    public void SetPassword(string password) => _gdtPassword = password;
+
+    [ObservableProperty]
     private string _flowPath = "";
 
     [ObservableProperty]
@@ -130,7 +137,9 @@ public partial class MainViewModel : ObservableObject
                 ToDate = ToDate.ToString("yyyy-MM-dd"),
                 InvoiceKind = InvoiceKind,
                 DownloadsRoot = DownloadsRoot,
-                JobId = Guid.NewGuid()
+                JobId = Guid.NewGuid(),
+                GdtMst = GdtMst,
+                GdtPassword = _gdtPassword
             };
 
             _logger.LogInformation("Job {JobId} started", parameters.JobId);

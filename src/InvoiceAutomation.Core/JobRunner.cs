@@ -110,6 +110,10 @@ public sealed class JobRunner : IJobRunner
         pairs.Add(new("tab", parameters.InvoiceKind));
         pairs.Add(new("downloadsRoot", parameters.DownloadsRoot));
         pairs.Add(new("jobId", parameters.JobId.ToString("N")));
+        if (!string.IsNullOrEmpty(parameters.GdtMst))
+            pairs.Add(new("gdtMst", parameters.GdtMst));
+        if (!string.IsNullOrEmpty(parameters.GdtPassword))
+            pairs.Add(new("gdtPassword", parameters.GdtPassword));
         return new FlowContext(pairs);
     }
 
