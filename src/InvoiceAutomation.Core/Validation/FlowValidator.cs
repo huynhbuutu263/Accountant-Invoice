@@ -7,7 +7,7 @@ public static class FlowValidator
     private static readonly HashSet<string> KnownActions =
     [
         "navigate", "click", "fill", "wait", "download", "loop",
-        "press", "selectoption", "extractzip", "upload"
+        "press", "selectoption", "extractzip", "upload", "pauseforuser"
     ];
 
     public static void Validate(AutomationFlow flow)
