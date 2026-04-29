@@ -7,7 +7,7 @@
     "gdtTraCuuUrl": "https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don",
     "gdtMst": "",
     "gdtPassword": "",
-    "gdtMstSelector": "input[type='text']",
+    "gdtMstSelector": "input#username",
     "gdtPasswordSelector": "input[type='password']",
     "gdtLoginButtonSelector": "button:has-text('Đăng nhập')",
     "gdtHydrationPasswordWait": "input[type='password']",
