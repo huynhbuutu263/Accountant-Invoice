@@ -1,25 +1,40 @@
 {
   "name": "GDT — tra cứu hóa đơn điện tử (template)",
-  "version": "1.0.0",
-  "description": "Starts at the General Department of Taxation e-invoice lookup page. Adjust selectors after inspecting the live page in DevTools.",
+  "version": "1.1.0",
+  "description": "Starts at the General Department of Taxation home page, pauses for manual login, then navigates to the e-invoice lookup page. Adjust selectors after inspecting the live page in DevTools.",
   "variables": {
+    "gdtHomeUrl": "https://hoadondientu.gdt.gov.vn/",
     "gdtTraCuuUrl": "https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don"
   },
   "steps": [
     {
-      "name": "Open GDT tra cứu hóa đơn",
+      "name": "Mở trang chủ GDT",
       "action": "navigate",
-      "value": "{{gdtTraCuuUrl}}",
+      "value": "{{gdtHomeUrl}}",
       "waitUntil": "domcontentloaded",
-      "timeoutMs": 90000,
+      "timeoutMs": 120000,
       "retry": {
         "count": 3,
         "backoffMs": [ 2000, 5000, 10000 ]
       },
+      "comment": "Phải mở trang chủ trước — điều hướng thẳng vào tra-cuu-hoa-don khi chưa đăng nhập sẽ nhận 403 hoặc trang trống."
+    },
+    {
+      "name": "Chờ bạn đăng nhập — nhấn OK để tiếp tục",
+      "action": "pauseForUser",
+      "value": "Please log in to the GDT portal in the browser window, then click OK here to continue the automation.",
+      "comment": "Tự đăng nhập trong cửa sổ trình duyệt, rồi bấm OK."
+    },
+    {
+      "name": "Vào URL tra cứu (đã có session)",
+      "action": "navigate",
+      "value": "{{gdtTraCuuUrl}}",
+      "waitUntil": "domcontentloaded",
+      "timeoutMs": 120000,
       "comment": "Portal: https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don"
     },
     {
-      "name": "Wait for document",
+      "name": "Chờ form tra cứu hiển thị",
       "action": "wait",
       "selector": "body",
       "timeoutMs": 30000,
