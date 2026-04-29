@@ -1,29 +1,80 @@
 {
   "name": "GDT — tra cứu hóa đơn điện tử (template)",
-  "version": "1.0.0",
-  "description": "Starts at the General Department of Taxation e-invoice lookup page. Adjust selectors after inspecting the live page in DevTools.",
+  "version": "1.1.0",
+  "description": "Opens the General Department of Taxation e-invoice lookup page after authenticating via the homepage. Direct navigation to tra-cuu-hoa-don returns 403 when there is no active session (no JWT). Adjust selectors after inspecting the live page in DevTools.",
   "variables": {
-    "gdtTraCuuUrl": "https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don"
+    "gdtHomeUrl": "https://hoadondientu.gdt.gov.vn/",
+    "gdtTraCuuUrl": "https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don",
+    "gdtMst": "",
+    "gdtPassword": "",
+    "gdtMstSelector": "input#username",
+    "gdtPasswordSelector": "input[type='password']",
+    "gdtLoginButtonSelector": "button:has-text('Đăng nhập')",
+    "gdtHydrationPasswordWait": "input[type='password']",
+    "gdtPostTraCuuReadySelector": "button[type='submit']:has-text('Tìm kiếm')"
   },
   "steps": [
     {
-      "name": "Open GDT tra cứu hóa đơn",
+      "name": "1 — Mở trang chủ (bắt buộc trước tra cứu)",
       "action": "navigate",
-      "value": "{{gdtTraCuuUrl}}",
+      "value": "{{gdtHomeUrl}}",
       "waitUntil": "domcontentloaded",
-      "timeoutMs": 90000,
+      "timeoutMs": 120000,
       "retry": {
         "count": 3,
         "backoffMs": [ 2000, 5000, 10000 ]
       },
+      "comment": "Không mở thẳng tra-cuu-hoa-don khi chưa có JWT: server trả 403 và không có DOM form trong HTML tĩnh."
+    },
+    {
+      "name": "Chờ JS render form đăng nhập",
+      "action": "wait",
+      "selector": "{{gdtHydrationPasswordWait}}",
+      "timeoutMs": 90000,
+      "comment": "Đợi ô mật khẩu xuất hiện = Next/React đã hydrate."
+    },
+    {
+      "name": "2 — Nhập MST (tài khoản)",
+      "action": "fill",
+      "selector": "{{gdtMstSelector}}",
+      "value": "{{gdtMst}}",
+      "timeoutMs": 20000,
+      "comment": "Điền gdtMst trong variables."
+    },
+    {
+      "name": "2 — Nhập mật khẩu",
+      "action": "fill",
+      "selector": "{{gdtPasswordSelector}}",
+      "value": "{{gdtPassword}}",
+      "timeoutMs": 20000
+    },
+    {
+      "name": "2 — Bấm Đăng nhập",
+      "action": "click",
+      "selector": "{{gdtLoginButtonSelector}}",
+      "timeoutMs": 30000,
+      "retry": { "count": 2, "backoffMs": [ 2000, 4000 ] }
+    },
+    {
+      "name": "Chờ sau đăng nhập (chuyển trang / menu)",
+      "action": "wait",
+      "selector": "body",
+      "timeoutMs": 60000
+    },
+    {
+      "name": "3 — Vào URL tra cứu (đã có session)",
+      "action": "navigate",
+      "value": "{{gdtTraCuuUrl}}",
+      "waitUntil": "domcontentloaded",
+      "timeoutMs": 120000,
       "comment": "Portal: https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don"
     },
     {
-      "name": "Wait for document",
+      "name": "Chờ form tra cứu hiển thị (tránh 403 / trang trống)",
       "action": "wait",
-      "selector": "body",
-      "timeoutMs": 30000,
-      "comment": "TODO: replace body with a stable selector (form, tab, table) from the real UI."
+      "selector": "{{gdtPostTraCuuReadySelector}}",
+      "timeoutMs": 120000,
+      "comment": "Nút submit Tìm kiếm là dấu hiệu UI tra cứu đã render. Nếu fail, kiểm tra cookie/JWT hoặc chỉnh selector."
     }
   ]
 }
