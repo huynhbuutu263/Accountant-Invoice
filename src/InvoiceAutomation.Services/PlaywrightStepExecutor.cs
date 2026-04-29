@@ -7,8 +7,13 @@ namespace InvoiceAutomation.Services;
 public sealed class PlaywrightStepExecutor : IStepExecutor
 {
     private readonly ILogger<PlaywrightStepExecutor> _logger;
+    private readonly IUserPrompt _userPrompt;
 
-    public PlaywrightStepExecutor(ILogger<PlaywrightStepExecutor> logger) => _logger = logger;
+    public PlaywrightStepExecutor(ILogger<PlaywrightStepExecutor> logger, IUserPrompt userPrompt)
+    {
+        _logger = logger;
+        _userPrompt = userPrompt;
+    }
 
     public async Task ExecuteAsync(
         AutomationStep step,
@@ -54,6 +59,13 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                 if (fileProcessor is null)
                     throw new InvalidOperationException("extractZip requires IFileProcessor registration.");
                 await fileProcessor.ExtractZipAsync(step.Value ?? "", cancellationToken).ConfigureAwait(false);
+                break;
+            case "pauseforuser":
+                var message = string.IsNullOrWhiteSpace(step.Value)
+                    ? "Please complete the required action in the browser, then click OK to continue."
+                    : step.Value;
+                _logger.LogInformation("Pausing for user: {Message}", message);
+                await _userPrompt.PromptAsync(message, cancellationToken).ConfigureAwait(false);
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported action '{step.Action}' for executor.");

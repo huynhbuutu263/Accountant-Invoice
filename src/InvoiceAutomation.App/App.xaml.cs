@@ -54,6 +54,7 @@ public partial class App : Application
         });
 
         services.AddInvoiceAutomationServices();
+        services.AddSingleton<IUserPrompt, WpfUserPrompt>();
         services.AddSingleton<IVariableResolver, VariableResolver>();
         services.AddSingleton<IJobRunner, JobRunner>();
         services.AddSingleton<MainViewModel>();
