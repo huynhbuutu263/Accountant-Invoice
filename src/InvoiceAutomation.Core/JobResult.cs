@@ -11,6 +11,7 @@ public sealed class JobResult
 {
     public JobStatus Status { get; set; }
     public string? ErrorMessage { get; set; }
+    public bool KeepBrowserOpen { get; set; }
     public List<StepExecutionRecord> Steps { get; } = new();
 }
 
