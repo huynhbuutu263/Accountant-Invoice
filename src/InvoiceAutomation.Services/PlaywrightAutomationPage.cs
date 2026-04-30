@@ -33,18 +33,22 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         await loc.ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
     }
 
-    public async Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, CancellationToken cancellationToken = default)
+    public async Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default)
     {
         var loc = _page.Locator(selector);
+        if (nthIndex.HasValue)
+            loc = loc.Nth(nthIndex.Value);
         if (clearFirst)
             await loc.ClearAsync(new LocatorClearOptions { Timeout = timeoutMs }).ConfigureAwait(false);
         await loc.FillAsync(value, new LocatorFillOptions { Timeout = timeoutMs }).ConfigureAwait(false);
     }
 
-    public async Task SetInputValueWithJavaScriptAsync(string selector, string value, int? timeoutMs, CancellationToken cancellationToken = default)
+    public async Task SetInputValueWithJavaScriptAsync(string selector, string value, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var loc = _page.Locator(selector);
+        if (nthIndex.HasValue)
+            loc = loc.Nth(nthIndex.Value);
         await loc.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = timeoutMs }).ConfigureAwait(false);
         await loc.EvaluateAsync(
             "(el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }",

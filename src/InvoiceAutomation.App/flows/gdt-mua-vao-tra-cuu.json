@@ -110,8 +110,9 @@
       "value": "{{fromDateVi}}",
       "javaScriptFill": true,
       "clearFirst": false,
+      "nthIndex": 0,
       "timeoutMs": 20000,
-      "comment": "Input readonly (ant-calendar-picker-input); javaScriptFill gán value + dispatch input/change. Nếu React không nhận, thử click mở lịch + chọn ngày (codegen)."
+      "comment": "Input readonly (ant-calendar-picker-input); javaScriptFill gán value + dispatch input/change. nthIndex 0 vì #tngay chứa 2 input cùng class (Playwright strict mode). Nếu React không nhận, thử click mở lịch + chọn ngày (codegen)."
     },
     {
       "name": "5 — Đến ngày",
@@ -120,6 +121,7 @@
       "value": "{{toDateVi}}",
       "javaScriptFill": true,
       "clearFirst": false,
+      "nthIndex": 0,
       "timeoutMs": 20000
     },
     {
