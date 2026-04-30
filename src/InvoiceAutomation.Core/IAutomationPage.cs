@@ -6,10 +6,10 @@ namespace InvoiceAutomation.Core;
 public interface IAutomationPage
 {
     Task GotoAsync(string url, string? waitUntil, int? timeoutMs, CancellationToken cancellationToken = default);
-    Task ClickAsync(string selector, int? timeoutMs, CancellationToken cancellationToken = default);
-    Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, CancellationToken cancellationToken = default);
+    Task ClickAsync(string selector, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default);
+    Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default);
     /// <summary>Assign <c>value</c> to the input/textarea and dispatch input/change (for readonly fields).</summary>
-    Task SetInputValueWithJavaScriptAsync(string selector, string value, int? timeoutMs, CancellationToken cancellationToken = default);
+    Task SetInputValueWithJavaScriptAsync(string selector, string value, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default);
     Task WaitForSelectorAsync(string selector, string state, int? timeoutMs, CancellationToken cancellationToken = default);
     Task DelayAsync(int milliseconds, CancellationToken cancellationToken = default);
     Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, CancellationToken cancellationToken = default);

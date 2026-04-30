@@ -29,6 +29,33 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
         _context = await _browser.NewContextAsync(contextOptions).ConfigureAwait(false);
         _page = await _context.NewPageAsync().ConfigureAwait(false);
         _wrapper = new PlaywrightAutomationPage(_page);
+
+        // When the login flow opens a new tab (or an OAuth redirect replaces the current page),
+        // keep _wrapper pointed at the latest active page so subsequent steps don't use a stale reference.
+        _context.Page += OnContextPage;
+    }
+
+    private void OnContextPage(object? sender, IPage newPage)
+    {
+        _page = newPage;
+        _wrapper?.UpdatePage(newPage);
+
+        // If this newly-created page is later closed (e.g. a login popup that dismisses itself),
+        // fall back to the last surviving page in the context.
+        newPage.Close += OnPageClose;
+    }
+
+    private void OnPageClose(object? sender, IPage closedPage)
+    {
+        // Unsubscribe to prevent the closed page from holding a reference to this host.
+        closedPage.Close -= OnPageClose;
+
+        var remaining = _context?.Pages;
+        if (remaining is { Count: > 0 })
+        {
+            _page = remaining[^1];
+            _wrapper?.UpdatePage(_page);
+        }
     }
 
     public async Task SaveStorageStateAsync(string path, CancellationToken cancellationToken = default)
@@ -43,6 +70,9 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_context is not null)
+            _context.Page -= OnContextPage;
+
         if (_page is not null)
         {
             try { await _page.CloseAsync().ConfigureAwait(false); } catch { /* ignore */ }

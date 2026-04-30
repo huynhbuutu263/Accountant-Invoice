@@ -93,8 +93,9 @@
       "name": "4a — Mở combobox Kết quả kiểm tra (Ant Select)",
       "action": "click",
       "selector": "{{gdtKetQuaKiemTraCombobox}}",
+      "nthIndex": 1,
       "timeoutMs": 30000,
-      "comment": "Trường nằm trong #ttxly; không dùng selectOption vì không phải <select> HTML."
+      "comment": "Trường nằm trong #ttxly; nthIndex 1 chọn combobox thứ hai (Kết quả kiểm tra) vì #ttxly chứa cả Trạng thái hóa đơn (0) lẫn Kết quả kiểm tra (1). Không dùng selectOption vì không phải <select> HTML."
     },
     {
       "name": "4b — Chọn Đã cấp mã hóa đơn trong dropdown",
@@ -109,8 +110,9 @@
       "value": "{{fromDateVi}}",
       "javaScriptFill": true,
       "clearFirst": false,
+      "nthIndex": 0,
       "timeoutMs": 20000,
-      "comment": "Input readonly (ant-calendar-picker-input); javaScriptFill gán value + dispatch input/change. Nếu React không nhận, thử click mở lịch + chọn ngày (codegen)."
+      "comment": "Input readonly (ant-calendar-picker-input); javaScriptFill gán value + dispatch input/change. nthIndex 0 vì #tngay chứa 2 input cùng class (Playwright strict mode). Nếu React không nhận, thử click mở lịch + chọn ngày (codegen)."
     },
     {
       "name": "5 — Đến ngày",
@@ -119,6 +121,7 @@
       "value": "{{toDateVi}}",
       "javaScriptFill": true,
       "clearFirst": false,
+      "nthIndex": 0,
       "timeoutMs": 20000
     },
     {

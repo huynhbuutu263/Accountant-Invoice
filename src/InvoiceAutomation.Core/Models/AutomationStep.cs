@@ -26,5 +26,7 @@ public sealed class AutomationStep
     public bool? ClearFirst { get; set; }
     /// <summary>When true with action fill: set input value via page script (for readonly Ant Design DatePicker, etc.).</summary>
     public bool? JavaScriptFill { get; set; }
+    /// <summary>0-based index for click/fill when selector matches multiple elements (e.g. two Ant Design comboboxes inside the same container).</summary>
+    public int? NthIndex { get; set; }
     public List<AutomationStep>? Children { get; set; }
 }
