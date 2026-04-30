@@ -25,8 +25,13 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         }).ConfigureAwait(false);
     }
 
-    public async Task ClickAsync(string selector, int? timeoutMs, CancellationToken cancellationToken = default) =>
-        await _page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+    public async Task ClickAsync(string selector, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default)
+    {
+        var loc = _page.Locator(selector);
+        if (nthIndex.HasValue)
+            loc = loc.Nth(nthIndex.Value);
+        await loc.ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+    }
 
     public async Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, CancellationToken cancellationToken = default)
     {

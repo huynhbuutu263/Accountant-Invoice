@@ -31,7 +31,7 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                 await page.GotoAsync(step.Value ?? "", step.WaitUntil, timeout, cancellationToken).ConfigureAwait(false);
                 break;
             case "click":
-                await page.ClickAsync(step.Selector!, timeout, cancellationToken).ConfigureAwait(false);
+                await page.ClickAsync(step.Selector!, timeout, step.NthIndex, cancellationToken).ConfigureAwait(false);
                 break;
             case "fill":
                 if (step.JavaScriptFill == true)
