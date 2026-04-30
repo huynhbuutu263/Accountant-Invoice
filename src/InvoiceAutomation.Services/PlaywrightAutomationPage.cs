@@ -6,9 +6,12 @@ namespace InvoiceAutomation.Services;
 
 public sealed class PlaywrightAutomationPage : IAutomationPage
 {
-    private readonly IPage _page;
+    private IPage _page;
 
     public PlaywrightAutomationPage(IPage page) => _page = page;
+
+    /// <summary>Replaces the underlying Playwright page (e.g. when the browser context navigates to a new tab).</summary>
+    internal void UpdatePage(IPage page) => _page = page;
 
     public string? Url => _page.Url;
 
