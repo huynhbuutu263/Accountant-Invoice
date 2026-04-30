@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IOptions<BrowserOptions> _browser;
     private readonly IOptions<DownloadsOptions> _downloads;
     private CancellationTokenSource? _cts;
+    private PlaywrightBrowserHost? _browserHost;
 
     public MainViewModel(
         IJobRunner jobRunner,
@@ -123,7 +124,16 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            await using var host = new PlaywrightBrowserHost();
+            // Dispose any browser that is still open from a previous run.
+            if (_browserHost is not null)
+            {
+                await _browserHost.DisposeAsync().ConfigureAwait(true);
+                _browserHost = null;
+            }
+
+            var host = new PlaywrightBrowserHost();
+            _browserHost = host;
+
             await host.LaunchAsync(new BrowserLaunchSettings
             {
                 Headless = _browser.Value.Headless,
@@ -163,6 +173,7 @@ public partial class MainViewModel : ObservableObject
                     Directory.CreateDirectory(dir);
                 await host.SaveStorageStateAsync(storagePath, _cts.Token).ConfigureAwait(true);
             }
+            // Browser intentionally left open so the user can inspect the portal after the run.
         }
         catch (OperationCanceledException)
         {
@@ -178,6 +189,16 @@ public partial class MainViewModel : ObservableObject
             IsRunning = false;
             _cts?.Dispose();
             _cts = null;
+        }
+    }
+
+    /// <summary>Closes the browser window and releases Playwright resources. Called on application exit.</summary>
+    public async Task CleanupBrowserAsync()
+    {
+        if (_browserHost is not null)
+        {
+            await _browserHost.DisposeAsync().ConfigureAwait(false);
+            _browserHost = null;
         }
     }
 
