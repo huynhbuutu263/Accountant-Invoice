@@ -22,14 +22,7 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
             Channel = string.IsNullOrWhiteSpace(settings.Channel) ? null : settings.Channel
         }).ConfigureAwait(false);
 
-        var contextOptions = new BrowserNewContextOptions
-        {
-            AcceptDownloads = true
-        };
-        // Do not force a wide default viewport: some portals relocate the login control at certain breakpoints/menus.
-        if (settings.ViewportWidth is int vw && vw > 0 &&
-            settings.ViewportHeight is int vh && vh > 0)
-            contextOptions.ViewportSize = new ViewportSize { Width = vw, Height = vh };
+        var contextOptions = new BrowserNewContextOptions();
         if (!string.IsNullOrWhiteSpace(settings.StorageStatePath) && File.Exists(settings.StorageStatePath))
             contextOptions.StorageStatePath = settings.StorageStatePath;
 
