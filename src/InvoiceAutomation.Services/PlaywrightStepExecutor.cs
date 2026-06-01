@@ -43,7 +43,7 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                 await ExecuteWaitAsync(step, page, timeout, cancellationToken).ConfigureAwait(false);
                 break;
             case "download":
-                var path = await page.DownloadAsync(step.Selector!, step.SavePath!, timeout, cancellationToken).ConfigureAwait(false);
+                var path = await page.DownloadAsync(step.Selector!, step.SavePath!, timeout, step.NthIndex, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Download saved to {Path}", path);
                 break;
             case "press":
@@ -91,7 +91,7 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                 "attached" => "attached",
                 _ => "visible"
             };
-            await page.WaitForSelectorAsync(step.Selector!, state, timeout, cancellationToken).ConfigureAwait(false);
+            await page.WaitForSelectorAsync(step.Selector!, state, timeout, step.NthIndex, cancellationToken).ConfigureAwait(false);
         }
     }
 }

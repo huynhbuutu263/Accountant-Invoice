@@ -11,17 +11,23 @@
     "gdtPasswordSelector": "input[type='password']",
     "gdtLoginButtonSelector": "button:has-text('Đăng nhập')",
     "gdtHydrationPasswordWait": "input[type='password']",
-    "gdtPostTraCuuReadySelector": "button[type='submit']:has-text('Tìm kiếm')",
+    "gdtPostTraCuuReadySelector": ".ant-tabs-tabpane-active button[type='submit']:has-text('Tìm kiếm')",
     "gdtTabMuaVaoSelector": ".ant-tabs-tab:has-text('mua vào')",
     "gdtKetQuaKiemTraCombobox": "#ttxly [role='combobox']",
     "gdtKetQuaKiemTraDropdownOption": ".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-dropdown-menu-item:has-text('Đã cấp mã hóa đơn')",
     "gdtTuNgaySelector": "#tngay input.ant-calendar-picker-input",
     "gdtDenNgaySelector": "#dngay input.ant-calendar-picker-input",
-    "gdtTimKiemButton": "button[type='submit']:has-text('Tìm kiếm')",
+    "gdtTimKiemButton": ".ant-tabs-tabpane-active button[type='submit']:has-text('Tìm kiếm')",
     "gdtResultRowSelector": ".ant-table-tbody tr",
     "gdtPageSizeSelect": "xpath=//select[preceding::*[contains(.,'15')]]",
+<<<<<<< HEAD
     "gdtBulkExportButton": "button[title*='Xuất'], button[aria-label*='Xuất'], button[title*='In hóa đơn'], button[aria-label*='In hóa đơn'], .ant-btn:has(.anticon-printer), .dx-icon-export",
     "gdtRowDownloadSelector": ".ant-table-tbody tr:nth-child({{rowIndex}}) a, .ant-table-tbody tr:nth-child({{rowIndex}}) button"
+=======
+    "gdtBulkExportButton": "button[title*='Xuất'], [aria-label*='Xuất'], .dx-icon-export",
+    "gdtRowTongTienCellSelector": "xpath=(//*[contains(@class,'ant-table-body')]//*[contains(@class,'ant-table-tbody')]//tr[{{rowIndex}}]/td[count(//*[contains(@class,'ant-table-header')]//th[contains(normalize-space(.),'Tổng tiền thanh toán')]/preceding-sibling::th)+1]|//table[contains(@class,'ant-table')]//*[contains(@class,'ant-table-tbody')]//tr[{{rowIndex}}]/td[count(ancestor::table[contains(@class,'ant-table')][1]/thead/tr/th[contains(normalize-space(.),'Tổng tiền thanh toán')]/preceding-sibling::th)+1])",
+    "gdtExportXmlToolbarButton": "xpath=(//*[contains(@class,'ant-table-pagination')]//button[@type='button' and not(ancestor::ul[contains(@class,'ant-pagination')])])[last()]|||xpath=(//*[contains(@class,'ant-table-pagination')]//*[contains(@class,'dx-icon-export')]/ancestor::div[contains(@class,'dx-button')])[last()]|||xpath=(//li[contains(@class,'ant-pagination-next')]/following::button[contains(@class,'ant-btn')])[last()]"
+>>>>>>> origin/main
   },
   "steps": [
     {
@@ -79,8 +85,9 @@
       "name": "Chờ form tra cứu hiển thị (tránh 403 / trang trống)",
       "action": "wait",
       "selector": "{{gdtPostTraCuuReadySelector}}",
+      "nthIndex": 0,
       "timeoutMs": 120000,
-      "comment": "Nút submit Tìm kiếm là dấu hiệu UI tra cứu đã render. Nếu fail, kiểm tra cookie/JWT hoặc chỉnh selector."
+      "comment": "Nút submit Tìm kiếm là dấu hiệu UI tra cứu đã render. nthIndex — nhiều nút trùng trong panel. Nếu fail, kiểm tra cookie/JWT hoặc chỉnh selector."
     },
     {
       "name": "3 — Tab / nút Hóa đơn điện tử mua vào",
@@ -90,17 +97,62 @@
       "comment": "Nếu mặc định đã là tab mua vào, đặt enabled: false cho bước này."
     },
     {
+<<<<<<< HEAD
       "name": "4 — Chờ bạn tự chọn bộ lọc và bấm Tìm kiếm",
       "action": "pauseForUser",
       "value": "Hãy tự chọn Kết quả kiểm tra, Từ ngày/Đến ngày và bấm Tìm kiếm trên trình duyệt. Khi bảng kết quả đã hiển thị, nhấn OK để tiếp tục tải tự động.",
       "comment": "Flow không tự chọn combobox/date nữa; người dùng thao tác thủ công rồi xác nhận."
+=======
+      "name": "4a — Mở combobox Kết quả kiểm tra (Ant Select)",
+      "action": "click",
+      "selector": "{{gdtKetQuaKiemTraCombobox}}",
+      "nthIndex": 1,
+      "timeoutMs": 30000,
+      "comment": "Trường nằm trong #ttxly; nthIndex 1 chọn combobox thứ hai (Kết quả kiểm tra) vì #ttxly chứa cả Trạng thái hóa đơn (0) lẫn Kết quả kiểm tra (1). Không dùng selectOption vì không phải <select> HTML."
+    },
+    {
+      "name": "4b — Chọn Đã cấp mã hóa đơn trong dropdown",
+      "action": "click",
+      "selector": "{{gdtKetQuaKiemTraDropdownOption}}",
+      "timeoutMs": 30000
+    },
+    {
+      "name": "5 — Từ ngày",
+      "action": "fill",
+      "selector": "{{gdtTuNgaySelector}}",
+      "value": "{{fromDateVi}}",
+      "javaScriptFill": true,
+      "clearFirst": false,
+      "nthIndex": 0,
+      "timeoutMs": 20000,
+      "comment": "Input readonly (ant-calendar-picker-input); javaScriptFill gán value + dispatch input/change. nthIndex 0 vì #tngay chứa 2 input cùng class (Playwright strict mode). Nếu React không nhận, thử click mở lịch + chọn ngày (codegen)."
+    },
+    {
+      "name": "5 — Đến ngày",
+      "action": "fill",
+      "selector": "{{gdtDenNgaySelector}}",
+      "value": "{{toDateVi}}",
+      "javaScriptFill": true,
+      "clearFirst": false,
+      "nthIndex": 0,
+      "timeoutMs": 20000
+    },
+    {
+      "name": "6 — Tìm kiếm",
+      "action": "click",
+      "selector": "{{gdtTimKiemButton}}",
+      "nthIndex": 0,
+      "timeoutMs": 30000,
+      "comment": "nthIndex — tránh strict mode khi có 2 nút Tìm kiếm trong cùng panel."
+>>>>>>> origin/main
     },
     {
       "name": "Chờ bảng kết quả có dòng",
       "action": "wait",
       "selector": "{{gdtResultRowSelector}}",
+      "nthIndex": 0,
       "timeoutMs": 120000,
-      "comment": "Ant Table: hàng trong .ant-table-tbody tr. Nếu grid khác (DevExtreme), đổi gdtResultRowSelector."
+      "comment": "nthIndex — tránh strict khi bảng có nhiều hàng khớp .ant-table-tbody tr."
     },
     {
       "name": "Tùy chọn — chọn số dòng/trang tối đa (nếu có)",
@@ -121,22 +173,28 @@
       "comment": "Toolbar grid thường là icon; chỉnh selector theo DevTools."
     },
     {
-      "name": "Lặp từng dòng — tải từng hóa đơn (chỉnh selector con)",
+      "name": "Lặp từng dòng — ô Tổng tiền + Xuất XML",
       "action": "loop",
       "loopKind": "rows",
       "rowSelector": "{{gdtResultRowSelector}}",
       "rowVariable": "rowIndex",
       "maxIterations": 500,
-      "comment": "Đếm dòng có thể gồm header — có thể cần tbody tr:not(:first-child) tùy DOM.",
+      "comment": "Chọn hàng bằng ô \"Tổng tiền thanh toán\"; không dùng cột \"Thông tin liên quan\". Sau đó icon toolbar Xuất xml.",
       "children": [
         {
-          "name": "Tải file / mở chi tiết dòng {{rowIndex}}",
+          "name": "{{rowIndex}} — Click ô Tổng tiền thanh toán",
+          "action": "click",
+          "selector": "{{gdtRowTongTienCellSelector}}",
+          "timeoutMs": 30000
+        },
+        {
+          "name": "{{rowIndex}} — Xuất XML",
           "action": "download",
-          "selector": "{{gdtRowDownloadSelector}}",
+          "selector": "{{gdtExportXmlToolbarButton}}",
           "savePath": "{{downloadsRoot}}\\gdt\\{{jobId}}\\row_{{rowIndex}}.xml",
           "timeoutMs": 120000,
           "onError": "continue",
-          "comment": "Nếu không phải download trực tiếp: đổi thành click + bước download riêng."
+          "comment": "Nút có tooltip Xuất xml thường là button cuối (sau 2 icon export giống nhau); loại trừ nút trong ul.ant-pagination."
         }
       ]
     }
