@@ -26,7 +26,11 @@
       "timeoutMs": 120000,
       "retry": {
         "count": 3,
-        "backoffMs": [ 2000, 5000, 10000 ]
+        "backoffMs": [
+          2000,
+          5000,
+          10000
+        ]
       },
       "comment": "Phải mở trang chủ trước — điều hướng thẳng vào tra-cuu-hoa-don khi chưa đăng nhập sẽ nhận 403 hoặc trang trống."
     },
@@ -69,7 +73,8 @@
       "action": "wait",
       "selector": "{{gdtResultRowSelector}}",
       "timeoutMs": 120000,
-      "comment": "Ant Table: hàng trong .ant-table-tbody tr. Nếu grid khác (DevExtreme), đổi gdtResultRowSelector."
+      "comment": "Ant Table: hàng trong .ant-table-tbody tr. Nếu grid khác (DevExtreme), đổi gdtResultRowSelector.",
+      "nthIndex": 0
     },
     {
       "name": "Tùy chọn — chọn số dòng/trang tối đa (nếu có)",

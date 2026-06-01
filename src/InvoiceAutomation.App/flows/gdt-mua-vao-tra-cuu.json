@@ -30,7 +30,14 @@
       "value": "{{gdtHomeUrl}}",
       "waitUntil": "domcontentloaded",
       "timeoutMs": 120000,
-      "retry": { "count": 3, "backoffMs": [ 2000, 5000, 10000 ] },
+      "retry": {
+        "count": 3,
+        "backoffMs": [
+          2000,
+          5000,
+          10000
+        ]
+      },
       "comment": "Không mở thẳng tra-cuu-hoa-don khi chưa có JWT: server trả 403 và không có DOM form trong HTML tĩnh."
     },
     {
@@ -60,7 +67,13 @@
       "action": "click",
       "selector": "{{gdtLoginButtonSelector}}",
       "timeoutMs": 30000,
-      "retry": { "count": 2, "backoffMs": [ 2000, 4000 ] }
+      "retry": {
+        "count": 2,
+        "backoffMs": [
+          2000,
+          4000
+        ]
+      }
     },
     {
       "name": "Chờ sau đăng nhập (chuyển trang / menu)",
@@ -100,7 +113,8 @@
       "action": "wait",
       "selector": "{{gdtResultRowSelector}}",
       "timeoutMs": 120000,
-      "comment": "Ant Table: hàng trong .ant-table-tbody tr. Nếu grid khác (DevExtreme), đổi gdtResultRowSelector."
+      "comment": "Ant Table: hàng trong .ant-table-tbody tr. Nếu grid khác (DevExtreme), đổi gdtResultRowSelector.",
+      "nthIndex": 0
     },
     {
       "name": "Tùy chọn — chọn số dòng/trang tối đa (nếu có)",

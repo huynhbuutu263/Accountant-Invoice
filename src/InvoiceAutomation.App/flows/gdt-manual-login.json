@@ -22,7 +22,14 @@
       "value": "{{gdtHomeUrl}}",
       "waitUntil": "domcontentloaded",
       "timeoutMs": 120000,
-      "retry": { "count": 3, "backoffMs": [ 2000, 5000, 10000 ] },
+      "retry": {
+        "count": 3,
+        "backoffMs": [
+          2000,
+          5000,
+          10000
+        ]
+      },
       "comment": "Navigates to the portal home page so you can log in. The browser window will be visible."
     },
     {
@@ -62,7 +69,8 @@
       "name": "Chờ bảng kết quả",
       "action": "wait",
       "selector": "{{gdtResultRowSelector}}",
-      "timeoutMs": 120000
+      "timeoutMs": 120000,
+      "nthIndex": 0
     },
     {
       "name": "Lặp từng dòng — tải từng hóa đơn",
