@@ -85,12 +85,12 @@ public sealed class StubPage : IAutomationPage
 {
     public string? Url { get; set; } = "https://stub";
     public Task GotoAsync(string url, string? waitUntil, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task ClickAsync(string selector, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task SetInputValueWithJavaScriptAsync(string selector, string value, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task WaitForSelectorAsync(string selector, string state, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task ClickAsync(string selector, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SetInputValueWithJavaScriptAsync(string selector, string value, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task WaitForSelectorAsync(string selector, string state, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task DelayAsync(int milliseconds, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, CancellationToken cancellationToken = default) => Task.FromResult(savePath);
+    public Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default) => Task.FromResult(savePath);
     public Task<int> CountAsync(string selector, CancellationToken cancellationToken = default) => Task.FromResult(0);
     public Task PressAsync(string? selector, string key, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SelectOptionAsync(string selector, string optionValueOrLabel, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;

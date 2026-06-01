@@ -49,13 +49,14 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         var loc = _page.Locator(selector);
         if (nthIndex.HasValue)
             loc = loc.Nth(nthIndex.Value);
-        await loc.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = timeoutMs }).ConfigureAwait(false);
+        // Ant Design DatePicker etc. often keep the bound <input> in DOM but not visible — JS fill still targets that node.
+        await loc.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = timeoutMs }).ConfigureAwait(false);
         await loc.EvaluateAsync(
             "(el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }",
             value).ConfigureAwait(false);
     }
 
-    public async Task WaitForSelectorAsync(string selector, string state, int? timeoutMs, CancellationToken cancellationToken = default)
+    public async Task WaitForSelectorAsync(string selector, string state, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default)
     {
         var s = (state ?? "visible").Trim().ToLowerInvariant();
         var wait = s switch
@@ -64,7 +65,10 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
             "attached" => WaitForSelectorState.Attached,
             _ => WaitForSelectorState.Visible
         };
-        await _page.Locator(selector).WaitForAsync(new LocatorWaitForOptions
+        var loc = _page.Locator(selector);
+        if (nthIndex.HasValue)
+            loc = loc.Nth(nthIndex.Value);
+        await loc.WaitForAsync(new LocatorWaitForOptions
         {
             State = wait,
             Timeout = timeoutMs
@@ -74,31 +78,70 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
     public Task DelayAsync(int milliseconds, CancellationToken cancellationToken = default) =>
         Task.Delay(milliseconds, cancellationToken);
 
-    public async Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, CancellationToken cancellationToken = default)
+    public async Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        static string[] SplitDownloadSelectors(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s))
+                return [];
+            var parts = s.Split("|||", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length == 0 ? [s.Trim()] : parts;
+        }
+
+        var candidates = SplitDownloadSelectors(selector);
+        if (candidates.Length == 0)
+            throw new ArgumentException("Download step requires selector.", nameof(selector));
+
         var dir = Path.GetDirectoryName(savePath);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
         var tmp = savePath + ".tmp";
-        try
+        Exception? lastError = null;
+        foreach (var sel in candidates)
         {
-            var download = await _page.RunAndWaitForDownloadAsync(async () =>
+            try
             {
-                await _page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
-            }, new PageRunAndWaitForDownloadOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+                var baseLoc = _page.Locator(sel);
+                if (nthIndex.HasValue)
+                    baseLoc = baseLoc.Nth(nthIndex.Value);
+                await baseLoc.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = timeoutMs }).ConfigureAwait(false);
 
-            await download.SaveAsAsync(tmp).ConfigureAwait(false);
-            if (File.Exists(savePath))
-                File.Delete(savePath);
-            File.Move(tmp, savePath);
-            return savePath;
+                var visible = baseLoc.Filter(new LocatorFilterOptions { Visible = true });
+                var clickLoc = await visible.CountAsync().ConfigureAwait(false) > 0 ? visible.Last : baseLoc.Last;
+
+                await clickLoc.ScrollIntoViewIfNeededAsync(new LocatorScrollIntoViewIfNeededOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+
+                var download = await _page.RunAndWaitForDownloadAsync(async () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        await clickLoc.ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        await clickLoc.ClickAsync(new LocatorClickOptions { Timeout = timeoutMs, Force = true }).ConfigureAwait(false);
+                    }
+                }, new PageRunAndWaitForDownloadOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+
+                await download.SaveAsAsync(tmp).ConfigureAwait(false);
+                if (File.Exists(savePath))
+                    File.Delete(savePath);
+                File.Move(tmp, savePath);
+                return savePath;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                if (File.Exists(tmp))
+                    try { File.Delete(tmp); } catch { /* ignore */ }
+            }
         }
-        finally
-        {
-            if (File.Exists(tmp))
-                try { File.Delete(tmp); } catch { /* ignore */ }
-        }
+
+        throw lastError ?? new InvalidOperationException("Download failed.");
     }
 
     public async Task<int> CountAsync(string selector, CancellationToken cancellationToken = default) =>
@@ -143,7 +186,7 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         if (!string.IsNullOrWhiteSpace(expect.Selector))
         {
             var state = expect.State ?? "visible";
-            await WaitForSelectorAsync(expect.Selector!, state, timeout, cancellationToken).ConfigureAwait(false);
+            await WaitForSelectorAsync(expect.Selector!, state, timeout, null, cancellationToken).ConfigureAwait(false);
         }
     }
 
