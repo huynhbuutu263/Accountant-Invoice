@@ -1,7 +1,7 @@
 {
   "name": "GDT — tra cứu hóa đơn điện tử mua vào (đăng nhập → lọc → tải)",
   "version": "1.2.0",
-  "description": "Portal https://hoadondientu.gdt.gov.vn (Next.js + Ant Design 3). Selectors trong bản này khớp DOM đã render (snapshot: span#tngay/#dngay DatePicker readonly, div#ttxly ant-select role=combobox, bảng .ant-table-tbody). Không có <select> cho Kết quả kiểm tra — dùng click mở dropdown + chọn item.",
+  "description": "Portal https://hoadondientu.gdt.gov.vn (Next.js + Ant Design 3). Flow đăng nhập tự động, sau đó chờ người dùng tự chọn bộ lọc (Kết quả kiểm tra, Từ ngày/Đến ngày) và bấm Tìm kiếm trước khi lặp tải từng dòng.",
   "variables": {
     "gdtHomeUrl": "https://hoadondientu.gdt.gov.vn/",
     "gdtTraCuuUrl": "https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don",
@@ -90,45 +90,10 @@
       "comment": "Nếu mặc định đã là tab mua vào, đặt enabled: false cho bước này."
     },
     {
-      "name": "4a — Mở combobox Kết quả kiểm tra (Ant Select)",
-      "action": "click",
-      "selector": "{{gdtKetQuaKiemTraCombobox}}",
-      "nthIndex": 1,
-      "timeoutMs": 30000,
-      "comment": "Trường nằm trong #ttxly; nthIndex 1 chọn combobox thứ hai (Kết quả kiểm tra) vì #ttxly chứa cả Trạng thái hóa đơn (0) lẫn Kết quả kiểm tra (1). Không dùng selectOption vì không phải <select> HTML."
-    },
-    {
-      "name": "4b — Chọn Đã cấp mã hóa đơn trong dropdown",
-      "action": "click",
-      "selector": "{{gdtKetQuaKiemTraDropdownOption}}",
-      "timeoutMs": 30000
-    },
-    {
-      "name": "5 — Từ ngày",
-      "action": "fill",
-      "selector": "{{gdtTuNgaySelector}}",
-      "value": "{{fromDateVi}}",
-      "javaScriptFill": true,
-      "clearFirst": false,
-      "nthIndex": 0,
-      "timeoutMs": 20000,
-      "comment": "Input readonly (ant-calendar-picker-input); javaScriptFill gán value + dispatch input/change. nthIndex 0 vì #tngay chứa 2 input cùng class (Playwright strict mode). Nếu React không nhận, thử click mở lịch + chọn ngày (codegen)."
-    },
-    {
-      "name": "5 — Đến ngày",
-      "action": "fill",
-      "selector": "{{gdtDenNgaySelector}}",
-      "value": "{{toDateVi}}",
-      "javaScriptFill": true,
-      "clearFirst": false,
-      "nthIndex": 0,
-      "timeoutMs": 20000
-    },
-    {
-      "name": "6 — Tìm kiếm",
-      "action": "click",
-      "selector": "{{gdtTimKiemButton}}",
-      "timeoutMs": 30000
+      "name": "4 — Chờ bạn tự chọn bộ lọc và bấm Tìm kiếm",
+      "action": "pauseForUser",
+      "value": "Hãy tự chọn Kết quả kiểm tra, Từ ngày/Đến ngày và bấm Tìm kiếm trên trình duyệt. Khi bảng kết quả đã hiển thị, nhấn OK để tiếp tục tải tự động.",
+      "comment": "Flow không tự chọn combobox/date nữa; người dùng thao tác thủ công rồi xác nhận."
     },
     {
       "name": "Chờ bảng kết quả có dòng",

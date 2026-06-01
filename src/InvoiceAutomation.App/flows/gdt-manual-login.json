@@ -1,7 +1,7 @@
 {
   "name": "GDT — đăng nhập thủ công → tra cứu hóa đơn điện tử mua vào",
   "version": "1.0.0",
-  "description": "Opens the GDT portal and pauses so you can log in manually. Click OK in the dialog when you are logged in and the search page is ready. The automation then fills in the date range, invoice kind, and runs the export loop.",
+  "description": "Opens the GDT portal and pauses so you can log in manually. Then it waits for you to manually choose filters (Kết quả kiểm tra, Từ ngày/Đến ngày) and click Tìm kiếm before looping rows to download.",
   "variables": {
     "gdtHomeUrl": "https://hoadondientu.gdt.gov.vn/",
     "gdtTraCuuUrl": "https://hoadondientu.gdt.gov.vn/tra-cuu/tra-cuu-hoa-don",
@@ -53,40 +53,10 @@
       "comment": "Switch to the purchase-invoice tab. Set enabled: false if it is already selected by default."
     },
     {
-      "name": "Mở combobox Kết quả kiểm tra",
-      "action": "click",
-      "selector": "{{gdtKetQuaKiemTraCombobox}}",
-      "timeoutMs": 30000
-    },
-    {
-      "name": "Chọn Đã cấp mã hóa đơn",
-      "action": "click",
-      "selector": "{{gdtKetQuaKiemTraDropdownOption}}",
-      "timeoutMs": 30000
-    },
-    {
-      "name": "Từ ngày",
-      "action": "fill",
-      "selector": "{{gdtTuNgaySelector}}",
-      "value": "{{fromDateVi}}",
-      "javaScriptFill": true,
-      "clearFirst": false,
-      "timeoutMs": 20000
-    },
-    {
-      "name": "Đến ngày",
-      "action": "fill",
-      "selector": "{{gdtDenNgaySelector}}",
-      "value": "{{toDateVi}}",
-      "javaScriptFill": true,
-      "clearFirst": false,
-      "timeoutMs": 20000
-    },
-    {
-      "name": "Tìm kiếm",
-      "action": "click",
-      "selector": "{{gdtTimKiemButton}}",
-      "timeoutMs": 30000
+      "name": "Chờ bạn tự chọn bộ lọc và bấm Tìm kiếm",
+      "action": "pauseForUser",
+      "value": "Please manually choose Kết quả kiểm tra, Từ ngày/Đến ngày and click Tìm kiếm in the browser. When the result table is visible, click OK to continue downloading.",
+      "comment": "No automatic combobox/date selection in this flow."
     },
     {
       "name": "Chờ bảng kết quả",
