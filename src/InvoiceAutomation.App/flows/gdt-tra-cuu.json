@@ -14,7 +14,7 @@
     "gdtTimKiemButton": "button[type='submit']:has-text('Tìm kiếm')",
     "gdtResultRowSelector": ".ant-table-tbody tr",
     "gdtPageSizeSelect": "xpath=//select[preceding::*[contains(.,'15')]]",
-    "gdtBulkExportButton": "button[title*='Xuất'], [aria-label*='Xuất'], .dx-icon-export",
+    "gdtBulkExportButton": "button[title*='Xuất'], [aria-label*='Xuất'], button[title*='In hóa đơn'], [aria-label*='In hóa đơn'], .ant-btn:has(.anticon-printer), .dx-icon-export",
     "gdtRowDownloadSelector": ".ant-table-tbody tr:nth-child({{rowIndex}}) a, .ant-table-tbody tr:nth-child({{rowIndex}}) button"
   },
   "steps": [
@@ -120,6 +120,8 @@
       "action": "click",
       "selector": "{{gdtBulkExportButton}}",
       "timeoutMs": 30000,
+      "retry": { "count": 1 },
+      "onError": "continue",
       "enabled": false,
       "comment": "Toolbar grid thường là icon; chỉnh selector theo DevTools."
     },
