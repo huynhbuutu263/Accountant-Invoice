@@ -15,7 +15,7 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
         _userPrompt = userPrompt;
     }
 
-    public async Task ExecuteAsync(
+    public async Task<string> ExecuteAsync(
         AutomationStep step,
         IAutomationPage page,
         IFileProcessor? fileProcessor,
@@ -24,14 +24,14 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
     {
         var action = step.Action.Trim().ToLowerInvariant();
         var timeout = step.TimeoutMs ?? defaultTimeoutMs;
-
+        var filePath = string.Empty;
         switch (action)
         {
             case "navigate":
                 await page.GotoAsync(step.Value ?? "", step.WaitUntil, timeout, cancellationToken).ConfigureAwait(false);
                 break;
             case "click":
-                await page.ClickAsync(step.Selector!, timeout, step.NthIndex, cancellationToken).ConfigureAwait(false);
+                filePath = await page.ClickAsync(step.Selector!, timeout, step.NthIndex, cancellationToken).ConfigureAwait(false);
                 break;
             case "fill":
                 if (step.JavaScriptFill == true)
@@ -70,6 +70,8 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
             default:
                 throw new InvalidOperationException($"Unsupported action '{step.Action}' for executor.");
         }
+
+        return filePath;
     }
 
     private static async Task ExecuteWaitAsync(AutomationStep step, IAutomationPage page, int timeout, CancellationToken cancellationToken)

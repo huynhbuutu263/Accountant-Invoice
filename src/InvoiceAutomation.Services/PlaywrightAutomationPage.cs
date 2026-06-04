@@ -1,6 +1,7 @@
 using InvoiceAutomation.Core;
 using InvoiceAutomation.Core.Models;
 using Microsoft.Playwright;
+using System.Linq;
 
 namespace InvoiceAutomation.Services;
 
@@ -25,12 +26,38 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         }).ConfigureAwait(false);
     }
 
-    public async Task ClickAsync(string selector, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default)
+    public async Task<string> ClickAsync(string selector, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default)
     {
         var loc = _page.Locator(selector);
+        var text = await loc.InnerTextAsync();
+        var splitValue = text.Split('\n');
+        var splitTab = splitValue.SelectMany(s => s.Split('\t')).ToList();
+        var fullFilePath = string.Empty;
+        try
+        {
+            if (splitTab.Count > 20)
+            {
+                var MSTLogin = splitTab[1];
+                var MaHoaDon = splitTab[6];
+                var ExportDay = splitTab[7].Replace('/', '-'); ;
+                var monthSplit = ExportDay.Split('-').ToList();
+                monthSplit.RemoveRange(0, 1);
+                var month = string.Join('-', monthSplit);
+                var SellerName = splitTab[10].Split(':')[1];
+                var fileName = string.Join('_', ExportDay, MaHoaDon, SellerName);
+                var path = Path.Combine(MSTLogin, month, ExportDay, fileName);
+                Console.WriteLine(path);
+            }
+        }
+        catch
+        {
+        }
+
         if (nthIndex.HasValue)
             loc = loc.Nth(nthIndex.Value);
         await loc.ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+
+        return fullFilePath;
     }
 
     public async Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default)
