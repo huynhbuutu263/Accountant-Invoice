@@ -13,6 +13,8 @@ namespace InvoiceAutomation.App;
 
 public partial class MainViewModel : ObservableObject
 {
+    private const string GdtHomeUrl = "https://hoadondientu.gdt.gov.vn/";
+
     private readonly IJobRunner _jobRunner;
     private readonly IFileProcessor _fileProcessor;
     private readonly ILogger<MainViewModel> _logger;
@@ -47,6 +49,8 @@ public partial class MainViewModel : ObservableObject
 
         StartCommand = new AsyncRelayCommand(RunAsync, () => !IsRunning);
         TestLoginCommand = new AsyncRelayCommand(TestLoginAsync, () => !IsRunning && !string.IsNullOrWhiteSpace(_flows.Value.LoginPath));
+        OpenGdtPortalCommand = new AsyncRelayCommand(OpenGdtPortalAsync, () => !IsRunning);
+        DownloadOnlyCommand = new AsyncRelayCommand(RunDownloadOnlyAsync, () => !IsRunning);
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
     }
 
@@ -56,6 +60,8 @@ public partial class MainViewModel : ObservableObject
 
     public IAsyncRelayCommand StartCommand { get; }
     public IAsyncRelayCommand TestLoginCommand { get; }
+    public IAsyncRelayCommand OpenGdtPortalCommand { get; }
+    public IAsyncRelayCommand DownloadOnlyCommand { get; }
     public IRelayCommand CancelCommand { get; }
 
     [ObservableProperty]
@@ -93,6 +99,8 @@ public partial class MainViewModel : ObservableObject
     {
         StartCommand.NotifyCanExecuteChanged();
         TestLoginCommand.NotifyCanExecuteChanged();
+        OpenGdtPortalCommand.NotifyCanExecuteChanged();
+        DownloadOnlyCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
     }
 
@@ -220,6 +228,99 @@ public partial class MainViewModel : ObservableObject
 
         FlowPath = full;
         await RunAsync().ConfigureAwait(true);
+    }
+
+    private async Task OpenGdtPortalAsync()
+    {
+        try
+        {
+            StatusMessage = "Opening browser…";
+            await EnsureBrowserHostAsync(CancellationToken.None).ConfigureAwait(true);
+            await _browserHost!.Page.GotoAsync(GdtHomeUrl, "domcontentloaded", 120_000, CancellationToken.None)
+                .ConfigureAwait(true);
+            StatusMessage = "GDT portal open — log in and run a search, then use Download only.";
+            _logger.LogInformation("Opened GDT home: {Url}", GdtHomeUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to open GDT portal");
+            StatusMessage = "Error: " + ex.Message;
+        }
+    }
+
+    private async Task RunDownloadOnlyAsync()
+    {
+        var flowPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, _flows.Value.DownloadOnlyPath));
+        if (!File.Exists(flowPath))
+        {
+            StatusMessage = "Download-only flow file not found.";
+            _logger.LogError("Flow not found: {Path}", flowPath);
+            return;
+        }
+
+        _cts = new CancellationTokenSource();
+        IsRunning = true;
+        Progress = 0;
+        StatusMessage = "Downloading…";
+
+        try
+        {
+            await EnsureBrowserHostAsync(_cts.Token).ConfigureAwait(true);
+
+            var parameters = new JobParameters
+            {
+                FromDate = FromDate.ToString("yyyy-MM-dd"),
+                ToDate = ToDate.ToString("yyyy-MM-dd"),
+                InvoiceKind = InvoiceKind,
+                DownloadsRoot = DownloadsRoot,
+                JobId = Guid.NewGuid(),
+                GdtMst = GdtMst,
+                GdtPassword = _gdtPassword
+            };
+
+            _logger.LogInformation("Download-only job {JobId} started", parameters.JobId);
+            var result = await _jobRunner
+                .RunAsync(flowPath, parameters, _browserHost!.Page, _fileProcessor, _cts.Token)
+                .ConfigureAwait(true);
+
+            Progress = 100;
+            StatusMessage = result.Status switch
+            {
+                JobStatus.Completed => "Download completed.",
+                JobStatus.Cancelled => "Cancelled.",
+                _ => "Failed: " + (result.ErrorMessage ?? "see logs")
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Cancelled.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Download-only run failed");
+            StatusMessage = "Error: " + ex.Message;
+        }
+        finally
+        {
+            IsRunning = false;
+            _cts?.Dispose();
+            _cts = null;
+        }
+    }
+
+    private async Task EnsureBrowserHostAsync(CancellationToken cancellationToken)
+    {
+        if (_browserHost is not null)
+            return;
+
+        var host = new PlaywrightBrowserHost();
+        _browserHost = host;
+        await host.LaunchAsync(new BrowserLaunchSettings
+        {
+            Headless = _browser.Value.Headless,
+            Channel = _browser.Value.Channel,
+            StorageStatePath = ResolveStorageStatePath()
+        }, cancellationToken).ConfigureAwait(true);
     }
 
     private string? ResolveStorageStatePath()

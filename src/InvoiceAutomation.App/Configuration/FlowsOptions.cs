@@ -6,4 +6,5 @@ public sealed class FlowsOptions
 
     public string DefaultPath { get; set; } = "flows/smoke.json";
     public string? LoginPath { get; set; }
+    public string DownloadOnlyPath { get; set; } = "flows/gdt-only-download.json";
 }

@@ -15,7 +15,8 @@
     "gdtResultRowSelector": ".ant-table-tbody tr",
     "gdtPageSizeSelect": "xpath=//select[preceding::*[contains(.,'15')]]",
     "gdtBulkExportButton": "button[title*='Xuất'], button[aria-label*='Xuất'], button[title*='In hóa đơn'], button[aria-label*='In hóa đơn'], .ant-btn:has(.anticon-printer), .dx-icon-export",
-    "gdtRowDownloadSelector": ".ant-table-tbody tr:nth-child({{rowIndex}}) a, .ant-table-tbody tr:nth-child({{rowIndex}}) button"
+    "gdtRowSelector": ".ant-table-tbody tr:nth-child({{rowIndex}})",
+    "gdtXuatXmlButtonSelector": "button:has(#icon_ketxuat) >> nth=1"
   },
   "steps": [
     {
@@ -104,13 +105,26 @@
       "comment": "Đếm dòng có thể gồm header — có thể cần tbody tr:not(:first-child) tùy DOM.",
       "children": [
         {
-          "name": "Tải file / mở chi tiết dòng {{rowIndex}}",
+          "name": "Chọn dòng {{rowIndex}}",
+          "action": "click",
+          "selector": "{{gdtRowSelector}}",
+          "timeoutMs": 30000,
+          "onError": "continue"
+        },
+        {
+          "name": "Tải XML dòng {{rowIndex}}",
           "action": "download",
-          "selector": "{{gdtRowDownloadSelector}}",
-          "savePath": "{{downloadsRoot}}\\gdt\\{{jobId}}\\row_{{rowIndex}}.xml",
+          "selector": "{{gdtXuatXmlButtonSelector}}",
+          "savePath": "{{downloadsRoot}}\\gdt\\{{jobId}}\\row_{{rowIndex}}.zip",
           "timeoutMs": 120000,
-          "onError": "continue",
-          "comment": "Nếu không phải download trực tiếp: đổi thành click + bước download riêng."
+          "onError": "continue"
+        },
+        {
+          "name": "Giải nén XML dòng {{rowIndex}}",
+          "action": "extractzip",
+          "value": "{{downloadsRoot}}\\gdt\\{{jobId}}\\row_{{rowIndex}}.zip",
+          "timeoutMs": 30000,
+          "onError": "continue"
         }
       ]
     }

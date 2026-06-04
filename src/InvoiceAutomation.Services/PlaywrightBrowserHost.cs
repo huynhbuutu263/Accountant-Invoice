@@ -22,7 +22,10 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
             Channel = string.IsNullOrWhiteSpace(settings.Channel) ? null : settings.Channel
         }).ConfigureAwait(false);
 
-        var contextOptions = new BrowserNewContextOptions();
+        var contextOptions = new BrowserNewContextOptions
+        {
+            AcceptDownloads = true
+        };
         if (!string.IsNullOrWhiteSpace(settings.StorageStatePath) && File.Exists(settings.StorageStatePath))
             contextOptions.StorageStatePath = settings.StorageStatePath;
 

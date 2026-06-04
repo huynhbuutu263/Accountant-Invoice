@@ -64,11 +64,16 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
             "attached" => WaitForSelectorState.Attached,
             _ => WaitForSelectorState.Visible
         };
-        await _page.Locator(selector).WaitForAsync(new LocatorWaitForOptions
+
+        var rows = _page.Locator(".ant-table-tbody tr");
+        var count = await rows.CountAsync();
+
+        await _page.Locator(selector).Nth(0).WaitForAsync(new LocatorWaitForOptions
         {
             State = wait,
             Timeout = timeoutMs
         }).ConfigureAwait(false);
+
     }
 
     public Task DelayAsync(int milliseconds, CancellationToken cancellationToken = default) =>
@@ -85,7 +90,14 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         {
             var download = await _page.RunAndWaitForDownloadAsync(async () =>
             {
-                await _page.Locator(selector).ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+                var locator = _page.Locator(selector);
+
+                if (await locator.CountAsync() > 1)
+                {
+                    locator = locator.First;
+                }
+
+                await locator.ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
             }, new PageRunAndWaitForDownloadOptions { Timeout = timeoutMs }).ConfigureAwait(false);
 
             await download.SaveAsAsync(tmp).ConfigureAwait(false);
