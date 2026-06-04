@@ -9,6 +9,7 @@ public interface IStepExecutor
         AutomationStep step,
         IAutomationPage page,
         IFileProcessor? fileProcessor,
+        FlowContext context,
         int defaultTimeoutMs,
         CancellationToken cancellationToken = default);
 }

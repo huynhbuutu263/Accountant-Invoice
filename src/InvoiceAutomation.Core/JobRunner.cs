@@ -188,6 +188,15 @@ public sealed class JobRunner : IJobRunner
         {
             ct.ThrowIfCancellationRequested();
             ctx.Set(rowVar, i.ToString());
+            var rowNthOffset = ctx.TryGet("rowNthOffset", out var offsetStr) && int.TryParse(offsetStr, out var off)
+                ? off
+                : 0;
+            var rowNth = i - 1 + rowNthOffset;
+            ctx.Set("rowNth", rowNth.ToString());
+            ctx.Set("rowIndex0", rowNth.ToString());
+            _logger.LogInformation(
+                "Loop {Name}: row {Current}/{Total} (rowNth={RowNth}, offset={Offset})",
+                loopResolved.Name, i, iterations, rowNth, rowNthOffset);
             foreach (var child in loopStep.Children)
             {
                 var outcome = await RunStepAsync(child, ctx, page, fileProcessor, strict, opt, result, ct).ConfigureAwait(false);
@@ -225,7 +234,22 @@ public sealed class JobRunner : IJobRunner
             try
             {
                 _logger.LogInformation("Step {Name} ({Action}) attempt {Attempt}/{Max}", resolved.Name, resolved.Action, attempt, maxAttempts);
-                await _executor.ExecuteAsync(resolved, page, fileProcessor, opt.DefaultTimeoutMs, ct).ConfigureAwait(false);
+                var stepOutput = await _executor.ExecuteAsync(resolved, page, fileProcessor, ctx, opt.DefaultTimeoutMs, ct).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(stepOutput))
+                {
+                    ctx.Set("rowFilePath", stepOutput);
+                    ctx.Set("filePath", stepOutput);
+                    _logger.LogInformation("Step {Name} set rowFilePath={Path}", resolved.Name, stepOutput);
+                }
+                else if (resolved.BuildRowPath == true &&
+                         resolved.Action.Equals("click", StringComparison.OrdinalIgnoreCase))
+                {
+                    var fallback = Path.Combine("gdt", ctx.GetOrEmpty("jobId"), $"row_{ctx.GetOrEmpty("rowIndex")}");
+                    ctx.Set("rowFilePath", fallback);
+                    ctx.Set("filePath", fallback);
+                    _logger.LogWarning("Step {Name}: using fallback rowFilePath={Path}", resolved.Name, fallback);
+                }
+
                 if (resolved.Expect is not null)
                     await page.ExpectAsync(resolved.Expect, resolved.TimeoutMs ?? opt.DefaultTimeoutMs, ct).ConfigureAwait(false);
 

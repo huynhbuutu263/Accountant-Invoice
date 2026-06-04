@@ -261,7 +261,7 @@ public partial class MainViewModel : ObservableObject
         _cts = new CancellationTokenSource();
         IsRunning = true;
         Progress = 0;
-        StatusMessage = "Downloading…";
+        StatusMessage = "Auto-downloading all rows…";
 
         try
         {

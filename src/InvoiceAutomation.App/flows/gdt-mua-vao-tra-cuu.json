@@ -21,8 +21,9 @@
     "gdtResultRowSelector": ".ant-table-tbody tr",
     "gdtPageSizeSelect": "xpath=//select[preceding::*[contains(.,'15')]]",
     "gdtBulkExportButton": "button[title*='Xuất'], button[aria-label*='Xuất'], button[title*='In hóa đơn'], button[aria-label*='In hóa đơn'], .ant-btn:has(.anticon-printer), .dx-icon-export",
-    "gdtRowSelector": ".ant-table-tbody tr:nth-child({{rowIndex}})",
-    "gdtXuatXmlButtonSelector": "button:has(#icon_ketxuat) >> nth=1"
+    "rowNthOffset": "0",
+    "gdtRowSelector": ".ant-table-tbody tr >> nth={{rowNth}}",
+    "gdtXuatXmlButtonSelector": "button:has(#icon_ketxuat)"
   },
   "steps": [
     {
@@ -145,24 +146,32 @@
       "comment": "Đếm dòng có thể gồm header — có thể cần tbody tr:not(:first-child) tùy DOM.",
       "children": [
         {
-          "name": "Chọn dòng {{rowIndex}}",
+          "name": "1 — Chọn dòng {{rowIndex}} (tạo filePath từ dữ liệu dòng)",
           "action": "click",
           "selector": "{{gdtRowSelector}}",
+          "buildRowPath": true,
           "timeoutMs": 30000,
           "onError": "continue"
         },
         {
-          "name": "Tải XML dòng {{rowIndex}}",
+          "name": "2 — Chờ GDT tải chi tiết hóa đơn",
+          "action": "wait",
+          "value": "3000",
+          "waitKind": "delay"
+        },
+        {
+          "name": "3 — Xuất XML (dùng filePath từ bước 1)",
           "action": "download",
           "selector": "{{gdtXuatXmlButtonSelector}}",
-          "savePath": "{{downloadsRoot}}\\gdt\\{{jobId}}\\row_{{rowIndex}}.zip",
+          "nthIndex": 1,
+          "savePath": "{{downloadsRoot}}\\{{rowFilePath}}.zip",
           "timeoutMs": 120000,
           "onError": "continue"
         },
         {
-          "name": "Giải nén XML dòng {{rowIndex}}",
+          "name": "4 — Giải nén XML",
           "action": "extractzip",
-          "value": "{{downloadsRoot}}\\gdt\\{{jobId}}\\row_{{rowIndex}}.zip",
+          "value": "{{downloadsRoot}}\\{{rowFilePath}}.zip",
           "timeoutMs": 30000,
           "onError": "continue"
         }

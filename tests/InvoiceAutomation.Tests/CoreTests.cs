@@ -2,6 +2,7 @@ using InvoiceAutomation.Core;
 using InvoiceAutomation.Core.Models;
 using InvoiceAutomation.Core.Options;
 using InvoiceAutomation.Core.Validation;
+using InvoiceAutomation.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -74,10 +75,10 @@ public sealed class MemoryFlowLoader : IFlowLoader
 public sealed class RecordingExecutor : IStepExecutor
 {
     public List<string> Executed { get; } = new();
-    public Task ExecuteAsync(AutomationStep step, IAutomationPage page, IFileProcessor? fileProcessor, int defaultTimeoutMs, CancellationToken cancellationToken = default)
+    public Task<string> ExecuteAsync(AutomationStep step, IAutomationPage page, IFileProcessor? fileProcessor, FlowContext context, int defaultTimeoutMs, CancellationToken cancellationToken = default)
     {
         Executed.Add(step.Name);
-        return Task.CompletedTask;
+        return Task.FromResult("");
     }
 }
 
@@ -85,12 +86,13 @@ public sealed class StubPage : IAutomationPage
 {
     public string? Url { get; set; } = "https://stub";
     public Task GotoAsync(string url, string? waitUntil, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task ClickAsync(string selector, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<string> ClickAsync(string selector, int? timeoutMs, int? nthIndex = null, bool buildRowPath = false, CancellationToken cancellationToken = default) =>
+        Task.FromResult("");
     public Task FillAsync(string selector, string value, bool clearFirst, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SetInputValueWithJavaScriptAsync(string selector, string value, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task WaitForSelectorAsync(string selector, string state, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task WaitForSelectorAsync(string selector, string state, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task DelayAsync(int milliseconds, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, CancellationToken cancellationToken = default) => Task.FromResult(savePath);
+    public Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default) => Task.FromResult(savePath);
     public Task<int> CountAsync(string selector, CancellationToken cancellationToken = default) => Task.FromResult(0);
     public Task PressAsync(string? selector, string key, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SelectOptionAsync(string selector, string optionValueOrLabel, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;

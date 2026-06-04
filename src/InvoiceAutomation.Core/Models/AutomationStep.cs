@@ -28,5 +28,7 @@ public sealed class AutomationStep
     public bool? JavaScriptFill { get; set; }
     /// <summary>0-based index for click/fill when selector matches multiple elements (e.g. two Ant Design comboboxes inside the same container).</summary>
     public int? NthIndex { get; set; }
+    /// <summary>When true with action click on a table row: parse row text into {{rowFilePath}} for the next download/extractZip steps.</summary>
+    public bool? BuildRowPath { get; set; }
     public List<AutomationStep>? Children { get; set; }
 }
