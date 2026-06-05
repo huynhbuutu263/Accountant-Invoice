@@ -15,17 +15,25 @@ dotnet build
 
 ## Playwright browsers
 
-After the first successful build of the app, install browser binaries (paths vary by configuration):
+After build or publish, install browsers from the folder that contains `InvoiceAutomation.App.exe`.
 
-```powershell
-Set-Location "src\InvoiceAutomation.App\bin\Debug\net8.0-windows"
-.\playwright.ps1 install
+**If you see “running scripts is disabled on this system”**, use:
+
+```cmd
+install-playwright.cmd
 ```
 
-Or from the repo root after build:
+Or:
 
 ```powershell
-pwsh "src\InvoiceAutomation.App\bin\Debug\net8.0-windows\playwright.ps1" install
+powershell -NoProfile -ExecutionPolicy Bypass -File .\playwright.ps1 install
+```
+
+If scripts are allowed:
+
+```powershell
+Set-Location "src\InvoiceAutomation.App\bin\Release\net8.0-windows\win-x64\publish"
+.\playwright.ps1 install
 ```
 
 ## Run
@@ -73,4 +81,4 @@ Set `Flows:DefaultPath` in `appsettings.json` to e.g. `flows/gdt-tra-cuu.json` w
 dotnet publish src\InvoiceAutomation.App -c Release -r win-x64 --self-contained false
 ```
 
-Distribute the publish output; recipients still run `playwright.ps1 install` once on each machine.
+Distribute the publish output; on each machine run `install-playwright.cmd` once (or the Bypass command above).

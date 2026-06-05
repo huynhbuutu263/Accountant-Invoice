@@ -47,12 +47,14 @@ public sealed partial class VariableResolver : IVariableResolver
         step.Name = Resolve(step.Name, context, strict);
         step.Action = Resolve(step.Action, context, strict);
         step.Selector = Resolve(step.Selector, context, strict);
-        step.Value = Resolve(step.Value, context, strict);
+        if (!ShouldDeferValueResolve(step))
+            step.Value = Resolve(step.Value, context, strict);
         step.WaitUntil = Resolve(step.WaitUntil, context, strict);
         step.WaitKind = Resolve(step.WaitKind, context, strict);
         step.OnError = Resolve(step.OnError, context, strict);
         step.Comment = Resolve(step.Comment, context, strict);
-        step.SavePath = Resolve(step.SavePath, context, strict);
+        if (!ShouldDeferSavePathResolve(step))
+            step.SavePath = Resolve(step.SavePath, context, strict);
         step.LoopKind = Resolve(step.LoopKind, context, strict);
         step.RowSelector = Resolve(step.RowSelector, context, strict);
         step.RowVariable = Resolve(step.RowVariable, context, strict);
@@ -68,6 +70,24 @@ public sealed partial class VariableResolver : IVariableResolver
             foreach (var child in step.Children)
                 ResolveStrings(child, context, strict);
         }
+    }
+
+    private static bool ShouldDeferValueResolve(AutomationStep step)
+    {
+        if (string.IsNullOrWhiteSpace(step.Value) || !step.Value.Contains("{{", StringComparison.Ordinal))
+            return false;
+        var action = step.Action.Trim();
+        return action.Equals("extractzip", StringComparison.OrdinalIgnoreCase) &&
+               step.Value.Contains("rowFilePath", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldDeferSavePathResolve(AutomationStep step)
+    {
+        if (string.IsNullOrWhiteSpace(step.SavePath) || !step.SavePath.Contains("{{", StringComparison.Ordinal))
+            return false;
+        return step.Action.Trim().Equals("download", StringComparison.OrdinalIgnoreCase) &&
+               (step.SavePath.Contains("rowFilePath", StringComparison.OrdinalIgnoreCase) ||
+                step.SavePath.Contains("filePath", StringComparison.OrdinalIgnoreCase));
     }
 
     private static AutomationStep CloneStep(AutomationStep s) =>

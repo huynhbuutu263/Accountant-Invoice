@@ -26,10 +26,6 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
         {
             AcceptDownloads = true
         };
-        // Do not force a wide default viewport: some portals relocate the login control at certain breakpoints/menus.
-        if (settings.ViewportWidth is int vw && vw > 0 &&
-            settings.ViewportHeight is int vh && vh > 0)
-            contextOptions.ViewportSize = new ViewportSize { Width = vw, Height = vh };
         if (!string.IsNullOrWhiteSpace(settings.StorageStatePath) && File.Exists(settings.StorageStatePath))
             contextOptions.StorageStatePath = settings.StorageStatePath;
 
