@@ -16,7 +16,7 @@ public sealed class FileProcessor : IFileProcessor
         if (!File.Exists(zipPath))
             throw new FileNotFoundException(zipPath);
 
-        var destDir = Path.Combine(Path.GetDirectoryName(zipPath) ?? ".", Path.GetFileNameWithoutExtension(zipPath) + "_extracted");
+        var destDir = Path.Combine(Path.GetDirectoryName(zipPath) ?? ".", Path.GetFileNameWithoutExtension(zipPath));
         Directory.CreateDirectory(destDir);
 
         var extracted = new List<string>();
@@ -48,6 +48,7 @@ public sealed class FileProcessor : IFileProcessor
             }
         }
 
+        File.Delete(zipPath);
         return Task.FromResult<IReadOnlyList<string>>(extracted);
     }
 

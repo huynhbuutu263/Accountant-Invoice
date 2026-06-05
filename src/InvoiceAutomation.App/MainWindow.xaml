@@ -51,12 +51,12 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="From" Margin="0,4,12,4" VerticalAlignment="Center" />
-                <DatePicker Grid.Row="0" Grid.Column="1" SelectedDate="{Binding FromDate}" Margin="0,4" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="To" Margin="0,4,12,4" VerticalAlignment="Center" />
-                <DatePicker Grid.Row="1" Grid.Column="1" SelectedDate="{Binding ToDate}" Margin="0,4" />
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Invoice kind" Margin="0,4,12,4" VerticalAlignment="Center" />
-                <ComboBox Grid.Row="2" Grid.Column="1"
+                <TextBlock Visibility="Collapsed" Grid.Row="0" Grid.Column="0" Text="From" Margin="0,4,12,4" VerticalAlignment="Center" />
+                <DatePicker Visibility="Collapsed" Grid.Row="0" Grid.Column="1" SelectedDate="{Binding FromDate}" Margin="0,4" />
+                <TextBlock Visibility="Collapsed" Grid.Row="1" Grid.Column="0" Text="To" Margin="0,4,12,4" VerticalAlignment="Center" />
+                <DatePicker Visibility="Collapsed" Grid.Row="1" Grid.Column="1" SelectedDate="{Binding ToDate}" Margin="0,4" />
+                <TextBlock Visibility="Collapsed" Grid.Row="2" Grid.Column="0" Text="Invoice kind" Margin="0,4,12,4" VerticalAlignment="Center" />
+                <ComboBox Visibility="Collapsed" Grid.Row="2" Grid.Column="1"
                           Margin="0,4"
                           ItemsSource="{Binding InvoiceKindOptions}"
                           SelectedItem="{Binding InvoiceKind}" />
@@ -64,33 +64,33 @@
                 <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding FlowPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Downloads" Margin="0,4,12,4" VerticalAlignment="Center" />
                 <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding DownloadsRoot, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
-                <TextBlock Grid.Row="5" Grid.Column="0" Text="MST (username)" Margin="0,4,12,4" VerticalAlignment="Center" />
-                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding GdtMst, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
-                <TextBlock Grid.Row="6" Grid.Column="0" Text="Password" Margin="0,4,12,4" VerticalAlignment="Center" />
-                <PasswordBox Grid.Row="6" Grid.Column="1" x:Name="PasswordInput" Margin="0,4" />
+                <TextBlock Visibility="Collapsed" Grid.Row="5" Grid.Column="0" Text="MST (username)" Margin="0,4,12,4" VerticalAlignment="Center" />
+                <TextBox Visibility="Collapsed" Grid.Row="5" Grid.Column="1" Text="{Binding GdtMst, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
+                <TextBlock Visibility="Collapsed" Grid.Row="6" Grid.Column="0" Text="Password" Margin="0,4,12,4" VerticalAlignment="Center" />
+                <PasswordBox Visibility="Collapsed" Grid.Row="6" Grid.Column="1" x:Name="PasswordInput" Margin="0,4" />
             </Grid>
         </GroupBox>
 
         <StackPanel Grid.Row="1" Grid.Column="2" VerticalAlignment="Top" Margin="0,0,0,12">
-            <Button Content="Start"
+            <Button Visibility="Collapsed" Content="Start"
                     Margin="0,0,0,8"
                     Padding="12,8"
                     Command="{Binding StartCommand}" />
-            <Button Content="Cancel"
+            <Button Visibility="Collapsed" Content="Cancel"
                     Margin="0,0,0,8"
                     Padding="12,8"
                     Command="{Binding CancelCommand}" />
-            <Button Content="Open GDT portal"
+            <Button Content="Open Browser"
                     Margin="0,0,0,8"
                     Padding="12,8"
                     Command="{Binding OpenGdtPortalCommand}"
                     ToolTip="Opens the browser and navigates to hoadondientu.gdt.gov.vn" />
-            <Button Content="Auto download all rows"
+            <Button Content="Download"
                     Margin="0,0,0,8"
                     Padding="12,8"
                     Command="{Binding DownloadOnlyCommand}"
                     ToolTip="Loops each table row: click row → download XML (run after Tìm kiếm shows results)" />
-            <Button Content="Test login flow"
+            <Button Visibility="Collapsed" Content="Test login flow"
                     Padding="12,8"
                     Command="{Binding TestLoginCommand}"
                     ToolTip="Runs the flow configured as Flows:LoginPath" />
@@ -108,6 +108,6 @@
                    TextWrapping="Wrap"
                    Foreground="#666"
                    FontSize="11"
-                   Text="Automation steps are defined in JSON under flows/. When the portal UI changes, edit selectors in the flow file. Install Playwright browsers: from the project output folder, run playwright.ps1 install (generated after build)." />
+                   Text="Automation steps are defined in JSON under flows/. Install Playwright once: run install-playwright.cmd in the app folder (avoids PowerShell script policy errors)." />
     </Grid>
 </Window>
