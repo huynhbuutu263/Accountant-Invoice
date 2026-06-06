@@ -6,6 +6,8 @@ namespace InvoiceAutomation.Services;
 
 public sealed class PlaywrightBrowserHost : IAsyncDisposable
 {
+    public const string GdtHostFragment = "gdt.gov.vn";
+
     private readonly ILogger<PlaywrightBrowserHost>? _logger;
     private IPlaywright? _playwright;
     private IBrowser? _browser;
@@ -14,6 +16,22 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
     private PlaywrightAutomationPage? _wrapper;
 
     public IAutomationPage Page => _wrapper ?? throw new InvalidOperationException("Browser not launched.");
+
+    /// <summary>True when Chromium is still connected (user may have closed the window).</summary>
+    public bool IsAlive
+    {
+        get
+        {
+            try
+            {
+                return _browser?.IsConnected == true && _context is not null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
 
     public PlaywrightBrowserHost(ILogger<PlaywrightBrowserHost>? logger = null) => _logger = logger;
 
@@ -54,15 +72,84 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
 
     private void OnPageClose(object? sender, IPage closedPage)
     {
-        // Unsubscribe to prevent the closed page from holding a reference to this host.
         closedPage.Close -= OnPageClose;
 
-        var remaining = _context?.Pages;
+        var remaining = _context?.Pages.Where(p => !p.IsClosed).ToList();
         if (remaining is { Count: > 0 })
         {
             _page = remaining[^1];
             _wrapper?.UpdatePage(_page);
+            _logger?.LogInformation("Tab closed; switched to {Url}", _page.Url);
         }
+        else
+        {
+            _page = null;
+            _logger?.LogWarning("All browser tabs were closed.");
+        }
+    }
+
+    /// <summary>Ensure <see cref="_page"/> points at an open tab, or create one.</summary>
+    public async Task EnsureActivePageAsync(CancellationToken cancellationToken = default)
+    {
+        if (_context is null || _browser?.IsConnected != true)
+            throw new InvalidOperationException("Browser not launched or has been closed.");
+
+        if (_page is not null && !_page.IsClosed)
+            return;
+
+        var alive = _context.Pages.Where(p => !p.IsClosed).ToList();
+        if (alive.Count > 0)
+        {
+            _page = alive[^1];
+            _wrapper?.UpdatePage(_page);
+            _logger?.LogInformation("Recovered active tab: {Url}", _page.Url);
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _page = await _context.NewPageAsync().ConfigureAwait(false);
+        _wrapper?.UpdatePage(_page);
+        _logger?.LogInformation("Opened new tab (no tabs were left).");
+    }
+
+    /// <summary>
+    /// Points automation at the GDT tab (prefers tra-cuu search page).
+    /// Does not navigate — keeps the month/filter the user already selected.
+    /// </summary>
+    public async Task FocusGdtTabForAutomationAsync(CancellationToken cancellationToken = default)
+    {
+        if (_context is null || _browser?.IsConnected != true)
+            throw new InvalidOperationException("Browser not launched or has been closed.");
+
+        var target = FindBestGdtPage();
+        if (target is null)
+        {
+            throw new InvalidOperationException(
+                "No GDT tab is open. Click 'Open GDT', log in, run your search, then start Download.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await target.BringToFrontAsync().ConfigureAwait(false);
+        _page = target;
+        _wrapper?.UpdatePage(target);
+        _logger?.LogInformation("Automation focused on GDT tab: {Url}", target.Url);
+    }
+
+    public IPage? FindBestGdtPage()
+    {
+        if (_context is null)
+            return null;
+
+        var gdtPages = _context.Pages
+            .Where(p => !p.IsClosed && (p.Url ?? "").Contains(GdtHostFragment, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (gdtPages.Count == 0)
+            return null;
+
+        return gdtPages.FirstOrDefault(p =>
+                   (p.Url ?? "").Contains("tra-cuu", StringComparison.OrdinalIgnoreCase))
+               ?? gdtPages[^1];
     }
 
     /// <summary>
@@ -74,12 +161,15 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
         string urlHostContains,
         string fileInputSelector,
         string filePath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool reloadBeforeUpload = false)
     {
         if (_context is null)
             throw new InvalidOperationException("Browser not launched.");
         if (!File.Exists(filePath))
             throw new FileNotFoundException(filePath);
+
+        await EnsureActivePageAsync(cancellationToken).ConfigureAwait(false);
 
         _context.Page -= OnContextPage;
         IPage? targetPage = null;
@@ -103,6 +193,17 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
             }
 
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (reloadBeforeUpload)
+            {
+                _logger?.LogInformation("Reloading page before upload: {Url}", targetPage.Url);
+                await targetPage.ReloadAsync(new PageReloadOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 90_000
+                }).ConfigureAwait(false);
+            }
+
             var input = targetPage.Locator(fileInputSelector).First;
             await input.WaitForAsync(new LocatorWaitForOptions
             {
@@ -110,6 +211,63 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
                 Timeout = 30_000
             }).ConfigureAwait(false);
             await input.SetInputFilesAsync(filePath).ConfigureAwait(false);
+            await targetPage.BringToFrontAsync().ConfigureAwait(false);
+
+            _page = targetPage;
+            _wrapper?.UpdatePage(targetPage);
+        }
+        finally
+        {
+            _context.Page += OnContextPage;
+        }
+    }
+
+    /// <summary>
+    /// Opens a URL in the browser. Reuses an existing tab on the same host when possible;
+    /// user can complete captcha / mã bí mật manually on the page.
+    /// </summary>
+    public async Task OpenUrlInTabAsync(string url, CancellationToken cancellationToken = default, bool navigateIfFound = true)
+    {
+        if (_context is null)
+            throw new InvalidOperationException("Browser not launched.");
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            throw new ArgumentException("Invalid URL.", nameof(url));
+
+        await EnsureActivePageAsync(cancellationToken).ConfigureAwait(false);
+
+        _context.Page -= OnContextPage;
+        IPage? targetPage = null;
+        try
+        {
+            var host = uri.Host;
+            targetPage = FindOpenPageByHost(host);
+            if (targetPage is not null)
+            {
+                _logger?.LogInformation("Reusing tab for {Host}: {Url}", host, targetPage.Url);
+                await targetPage.BringToFrontAsync().ConfigureAwait(false);
+                if (navigateIfFound)
+                {
+                    _logger?.LogInformation("Navigating reused tab to {Url}", url);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await targetPage.GotoAsync(url, new PageGotoOptions
+                    {
+                        WaitUntil = WaitUntilState.DOMContentLoaded,
+                        Timeout = 90_000
+                    }).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                _logger?.LogInformation("Opening new tab for {Url}", url);
+                targetPage = await _context.NewPageAsync().ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                await targetPage.GotoAsync(url, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 90_000
+                }).ConfigureAwait(false);
+            }
+
             await targetPage.BringToFrontAsync().ConfigureAwait(false);
 
             _page = targetPage;

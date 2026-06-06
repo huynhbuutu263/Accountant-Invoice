@@ -137,8 +137,10 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         string savePath,
         int? timeoutMs,
         int? nthIndex = null,
+        int? clickTimeoutMs = null,
         CancellationToken cancellationToken = default)
     {
+        var clickTimeout = clickTimeoutMs ?? 5_000;
         var dir = Path.GetDirectoryName(savePath);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
@@ -150,7 +152,7 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
             {
                 var clickTarget = await ResolveDownloadClickTargetAsync(selector, nthIndex)
                     .ConfigureAwait(false);
-                await clickTarget.ClickAsync(new LocatorClickOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+                await clickTarget.ClickAsync(new LocatorClickOptions { Timeout = clickTimeout }).ConfigureAwait(false);
             }, new PageRunAndWaitForDownloadOptions { Timeout = timeoutMs }).ConfigureAwait(false);
 
             await download.SaveAsAsync(tmp).ConfigureAwait(false);
@@ -158,6 +160,11 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
                 File.Delete(savePath);
             File.Move(tmp, savePath);
             return savePath;
+        }
+        catch (Exception ex)
+        {
+            DownloadErrorInvoiceXml.Write(savePath, ex.Message);
+            throw;
         }
         finally
         {
@@ -183,6 +190,165 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
 
     public async Task SelectOptionAsync(string selector, string optionValueOrLabel, int? timeoutMs, CancellationToken cancellationToken = default) =>
         await _page.Locator(selector).SelectOptionAsync(optionValueOrLabel, new LocatorSelectOptionOptions { Timeout = timeoutMs }).ConfigureAwait(false);
+
+    public async Task SelectAntDesignMaxOptionAsync(
+        string comboboxSelector,
+        string? dropdownItemSelector,
+        int? timeoutMs,
+        int? nthIndex = null,
+        CancellationToken cancellationToken = default)
+    {
+        var timeout = timeoutMs ?? 15_000;
+        var combo = await ResolvePageSizeComboboxAsync(comboboxSelector, nthIndex, timeout, cancellationToken)
+            .ConfigureAwait(false);
+
+        var currentValue = await TryReadSelectedNumericValueAsync(combo).ConfigureAwait(false);
+        await combo.ScrollIntoViewIfNeededAsync().ConfigureAwait(false);
+        await combo.ClickAsync(new LocatorClickOptions { Timeout = timeout, Force = true }).ConfigureAwait(false);
+
+        var items = await WaitForActiveDropdownItemsAsync(dropdownItemSelector, timeout, cancellationToken)
+            .ConfigureAwait(false);
+
+        var (maxValue, maxIndex) = await FindMaxNumericOptionIndexAsync(items).ConfigureAwait(false);
+        if (maxIndex < 0)
+            throw new InvalidOperationException("Ant Design dropdown has no numeric page-size options.");
+
+        if (currentValue == maxValue)
+        {
+            _logger?.LogInformation("Page size already at max ({Value}); skipping.", maxValue);
+            await _page.Keyboard.PressAsync("Escape").ConfigureAwait(false);
+            return;
+        }
+
+        _logger?.LogInformation("Ant Select page size: {Current} → {Max} (index {Index})", currentValue, maxValue, maxIndex);
+        await items.Nth(maxIndex).ClickAsync(new LocatorClickOptions { Timeout = timeout, Force = true }).ConfigureAwait(false);
+    }
+
+    private async Task<ILocator> ResolvePageSizeComboboxAsync(
+        string primarySelector,
+        int? nthIndex,
+        int timeout,
+        CancellationToken cancellationToken)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(primarySelector))
+            candidates.Add(primarySelector.Trim());
+        candidates.AddRange(
+        [
+            ".ant-tabs-tabpane-active div.ant-row-flex-space-between [role='combobox']",
+            ".ant-pagination-options-size-changer .ant-select-selection[role='combobox']",
+            ".ant-pagination-options-size-changer .ant-select-selection",
+            ".ant-pagination-options-size-changer [role='combobox']",
+            ".ant-pagination .ant-select-selection[role='combobox']",
+            ".ant-table-pagination .ant-select-selection[role='combobox']"
+        ]);
+
+        foreach (var selector in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var loc = _page.Locator(selector);
+            var count = await loc.CountAsync().ConfigureAwait(false);
+            if (count == 0)
+                continue;
+
+            var index = nthIndex ?? count - 1;
+            if (index < 0 || index >= count)
+                index = count - 1;
+
+            var target = loc.Nth(index);
+            try
+            {
+                await target.WaitForAsync(new LocatorWaitForOptions
+                {
+                    State = WaitForSelectorState.Visible,
+                    Timeout = timeout
+                }).ConfigureAwait(false);
+                _logger?.LogInformation("Page size combobox resolved: '{Selector}' index {Index}/{Count}", selector, index, count);
+                return target;
+            }
+            catch (TimeoutException)
+            {
+                _logger?.LogDebug("Page size combobox not visible for selector '{Selector}'", selector);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Page size combobox not found. Tried: {string.Join(", ", candidates.Distinct(StringComparer.OrdinalIgnoreCase))}");
+    }
+
+    private static async Task<int?> TryReadSelectedNumericValueAsync(ILocator combo)
+    {
+        try
+        {
+            var selected = combo.Locator(".ant-select-selection-selected-value");
+            if (await selected.CountAsync().ConfigureAwait(false) > 0)
+            {
+                var text = (await selected.First.InnerTextAsync().ConfigureAwait(false)).Trim();
+                if (int.TryParse(text, out var n))
+                    return n;
+            }
+
+            var fallback = (await combo.InnerTextAsync().ConfigureAwait(false)).Trim();
+            return int.TryParse(fallback, out var parsed) ? parsed : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<ILocator> WaitForActiveDropdownItemsAsync(
+        string? dropdownItemSelector,
+        int timeout,
+        CancellationToken cancellationToken)
+    {
+        var customItemSelector = string.IsNullOrWhiteSpace(dropdownItemSelector)
+            ? null
+            : dropdownItemSelector.Trim();
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeout);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var dropdowns = _page.Locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+            var dropdownCount = await dropdowns.CountAsync().ConfigureAwait(false);
+            for (var d = dropdownCount - 1; d >= 0; d--)
+            {
+                var dropdown = dropdowns.Nth(d);
+                var items = dropdown.Locator(".ant-select-dropdown-menu-item, .ant-select-item-option, .ant-select-item");
+
+                var itemCount = await items.CountAsync().ConfigureAwait(false);
+                if (itemCount == 0)
+                    continue;
+
+                var (_, maxIndex) = await FindMaxNumericOptionIndexAsync(items).ConfigureAwait(false);
+                if (maxIndex >= 0)
+                    return items;
+            }
+
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException("Ant Design page-size dropdown did not open or has no numeric options.");
+    }
+
+    private static async Task<(int MaxValue, int MaxIndex)> FindMaxNumericOptionIndexAsync(ILocator items)
+    {
+        var count = await items.CountAsync().ConfigureAwait(false);
+        var maxValue = -1;
+        var maxIndex = -1;
+        for (var i = 0; i < count; i++)
+        {
+            var text = (await items.Nth(i).InnerTextAsync().ConfigureAwait(false)).Trim();
+            if (int.TryParse(text, out var n) && n > maxValue)
+            {
+                maxValue = n;
+                maxIndex = i;
+            }
+        }
+
+        return (maxValue, maxIndex);
+    }
 
     public async Task UploadAsync(string selector, string filePath, int? timeoutMs, CancellationToken cancellationToken = default) =>
         await _page.Locator(selector).SetInputFilesAsync(filePath, new LocatorSetInputFilesOptions { Timeout = timeoutMs }).ConfigureAwait(false);

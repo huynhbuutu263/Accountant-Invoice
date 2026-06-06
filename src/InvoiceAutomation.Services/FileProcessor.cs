@@ -14,7 +14,16 @@ public sealed class FileProcessor : IFileProcessor
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!File.Exists(zipPath))
+        {
+            var errXml = DownloadErrorInvoiceXml.PathForZipSave(zipPath);
+            if (File.Exists(errXml))
+            {
+                _logger.LogWarning("Zip not found; download error invoice at {Path}", errXml);
+                return Task.FromResult<IReadOnlyList<string>>(new[] { errXml });
+            }
+
             throw new FileNotFoundException(zipPath);
+        }
 
         var destDir = Path.Combine(Path.GetDirectoryName(zipPath) ?? ".", Path.GetFileNameWithoutExtension(zipPath));
         Directory.CreateDirectory(destDir);
@@ -50,6 +59,165 @@ public sealed class FileProcessor : IFileProcessor
 
         File.Delete(zipPath);
         return Task.FromResult<IReadOnlyList<string>>(extracted);
+    }
+
+    public string? RelocateToInvoicePath(
+        string extractedFolderPath,
+        string downloadsRoot,
+        string? rowFallbackRelativePath,
+        string? buyerMstOverride = null)
+    {
+        if (!Directory.Exists(extractedFolderPath))
+            return rowFallbackRelativePath;
+
+        if (string.IsNullOrWhiteSpace(downloadsRoot))
+            downloadsRoot = extractedFolderPath;
+
+        var xmlPath = FindInvoiceXmlFile(extractedFolderPath);
+        string? targetRelative = null;
+
+        if (xmlPath is not null &&
+            InvoicePathBuilder.TryBuildFromXmlFile(xmlPath, buyerMstOverride, out var fromXml))
+        {
+            targetRelative = fromXml;
+            _logger.LogInformation("Invoice path from XML: {Path}", targetRelative);
+        }
+        else if (!string.IsNullOrWhiteSpace(rowFallbackRelativePath))
+        {
+            targetRelative = rowFallbackRelativePath;
+            _logger.LogInformation("Invoice path from row fallback: {Path}", targetRelative);
+        }
+
+        if (string.IsNullOrWhiteSpace(targetRelative))
+        {
+            _logger.LogWarning("Could not resolve invoice path from XML or row for {Folder}", extractedFolderPath);
+            return null;
+        }
+
+        var sourceDir = Path.GetFullPath(extractedFolderPath);
+        var targetDir = Path.GetFullPath(Path.Combine(downloadsRoot, targetRelative));
+        if (string.Equals(sourceDir, targetDir, StringComparison.OrdinalIgnoreCase))
+            return targetRelative;
+
+        Directory.CreateDirectory(targetDir);
+        CopyDirectoryContents(sourceDir, targetDir);
+        TryDeleteDirectoryRecursive(sourceDir);
+        TryDeleteEmptyStagingParents(sourceDir, Path.GetFullPath(downloadsRoot));
+
+        _logger.LogInformation("Moved invoice files to {Path}", targetDir);
+        return targetRelative;
+    }
+
+    public async Task<IReadOnlyList<string>> FinalizeStagingFolderAsync(
+        string stagingFolder,
+        string downloadsRoot,
+        string? buyerMstOverride = null,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var results = new List<string>();
+        if (!Directory.Exists(stagingFolder))
+        {
+            _logger.LogWarning("Staging folder not found: {Path}", stagingFolder);
+            return results;
+        }
+
+        foreach (var zipPath in Directory.GetFiles(stagingFolder, "*.zip").OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await ExtractZipAsync(zipPath, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to extract staging zip {Path}", zipPath);
+            }
+        }
+
+        foreach (var dir in Directory.GetDirectories(stagingFolder).OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var rowKey = Path.GetFileName(dir);
+            var rowFallback = StagingPaths.ReadRowPathSidecar(stagingFolder, rowKey);
+
+            try
+            {
+                var finalPath = RelocateToInvoicePath(dir, downloadsRoot, rowFallback, buyerMstOverride);
+                if (!string.IsNullOrWhiteSpace(finalPath))
+                    results.Add(finalPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to relocate staging folder {Path}", dir);
+            }
+
+            StagingPaths.DeleteRowPathSidecar(stagingFolder, rowKey);
+        }
+
+        if (Directory.Exists(stagingFolder) && !Directory.EnumerateFileSystemEntries(stagingFolder).Any())
+            TryDeleteDirectoryRecursive(stagingFolder);
+
+        _logger.LogInformation("Finalized {Count} invoice(s) from staging {Path}", results.Count, stagingFolder);
+        return results;
+    }
+
+    private static string? FindInvoiceXmlFile(string folder)
+    {
+        var preferred = Path.Combine(folder, "invoice.xml");
+        if (File.Exists(preferred))
+            return preferred;
+
+        return Directory.GetFiles(folder, "*.xml", SearchOption.AllDirectories)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static void CopyDirectoryContents(string sourceDir, string targetDir)
+    {
+        foreach (var file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(sourceDir, file);
+            var dest = Path.Combine(targetDir, relative);
+            var parent = Path.GetDirectoryName(dest);
+            if (!string.IsNullOrEmpty(parent))
+                Directory.CreateDirectory(parent);
+            File.Copy(file, dest, overwrite: true);
+        }
+    }
+
+    private void TryDeleteDirectoryRecursive(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not delete temp folder {Path}", path);
+        }
+    }
+
+    private static void TryDeleteEmptyStagingParents(string sourceDir, string downloadsRoot)
+    {
+        var current = Path.GetDirectoryName(sourceDir);
+        while (!string.IsNullOrEmpty(current) &&
+               !string.Equals(current, downloadsRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (!Directory.Exists(current) || Directory.EnumerateFileSystemEntries(current).Any())
+                    break;
+                Directory.Delete(current);
+            }
+            catch
+            {
+                break;
+            }
+
+            current = Path.GetDirectoryName(current);
+        }
     }
 
     public static bool LooksLikePdf(string path)

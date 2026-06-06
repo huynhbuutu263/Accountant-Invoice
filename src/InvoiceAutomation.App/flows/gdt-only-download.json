@@ -1,0 +1,83 @@
+{
+  "name": "GDT — tải hết dòng rồi giải nén + move theo XML",
+  "version": "2.0.0",
+  "description": "Phase 1: lặp click từng dòng + xuất XML vào _staging. Phase 2: giải nén toàn bộ zip, đọc XML, move vào thư mục đích (fallback: path từ dòng).",
+  "variables": {
+    "gdtResultRowSelector": ".ant-table-tbody tr",
+    "gdtStagingFolder": "{{downloadsRoot}}\\_staging",
+    "gdtPageSizeCombobox": "#__next > section > section > main > div > div > div > div > div.ant-tabs-content.ant-tabs-content-animated.ant-tabs-top-content > div.ant-tabs-tabpane.ant-tabs-tabpane-active > div.ant-row > div:nth-child(2) > div.ant-row-flex.ant-row-flex-space-between.ant-row-flex-middle > div:nth-child(2) > div > div:nth-child(4) > div > div [role='combobox']",
+    "rowNthOffset": "0",
+    "gdtRowSelector": ".ant-table-tbody tr >> nth={{rowNth}}",
+    "gdtXuatXmlButtonSelector": "button:has(#icon_ketxuat)"
+  },
+  "steps": [
+    {
+      "name": "Chờ bảng kết quả có dòng",
+      "action": "wait",
+      "selector": "{{gdtResultRowSelector}}",
+      "timeoutMs": 1000
+    },
+    {
+      "name": "Chọn số dòng/trang tối đa (Ant Select)",
+      "action": "selectAntMax",
+      "selector": "{{gdtPageSizeCombobox}}",
+      "timeoutMs": 5000,
+      "comment": "Mở combobox pagination và chọn số lớn nhất (10/15/20/50/100)."
+    },
+    {
+      "name": "Chờ bảng reload sau đổi page size",
+      "action": "wait",
+      "value": "1000",
+      "waitKind": "delay"
+    },
+    {
+      "name": "Chờ lại bảng kết quả sau đổi page size",
+      "action": "wait",
+      "selector": "{{gdtResultRowSelector}}",
+      "timeoutMs": 3000,
+      "onError": "continue"
+    },
+    {
+      "name": "Phase 1 — lặp: click dòng + xuất XML (chưa giải nén)",
+      "action": "loop",
+      "loopKind": "rows",
+      "rowSelector": "{{gdtResultRowSelector}}",
+      "rowVariable": "rowIndex",
+      "maxIterations": 500,
+      "children": [
+        {
+          "name": "1 — Chọn dòng {{rowIndex}}",
+          "action": "click",
+          "selector": "{{gdtRowSelector}}",
+          "buildRowPath": true,
+          "timeoutMs": 5000,
+          "onError": "continue",
+          "comment": "Lưu row path sidecar (_staging/{rowIndex}.rowpath) cho phase 2."
+        },
+        {
+          "name": "2 — Chờ GDT tải chi tiết hóa đơn",
+          "action": "wait",
+          "value": "500",
+          "waitKind": "delay"
+        },
+        {
+          "name": "3 — Xuất XML vào staging",
+          "action": "download",
+          "selector": "{{gdtXuatXmlButtonSelector}}",
+          "nthIndex": 1,
+          "savePath": "{{gdtStagingFolder}}\\{{rowIndex}}.zip",
+          "timeoutMs": 2000,
+          "onError": "continue"
+        }
+      ]
+    },
+    {
+      "name": "Phase 2 — giải nén toàn bộ + move theo XML",
+      "action": "finalizeStaging",
+      "value": "{{gdtStagingFolder}}",
+      "timeoutMs": 60000,
+      "onError": "continue",
+      "comment": "Extract mọi *.zip trong _staging, đọc invoice.xml, chuyển tới {MST}/{tháng}/{tên file}."
+    }
+  ]
+}

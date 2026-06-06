@@ -27,6 +27,8 @@ public partial class MainViewModel : ObservableObject
     private CancellationTokenSource? _cts;
     private PlaywrightBrowserHost? _browserHost;
     private readonly IInvoiceUploadService _invoiceUploadService;
+    private readonly IInvoicePdfLookupService _invoicePdfLookupService;
+    private readonly IOptions<InvoiceLookupOptions> _invoiceLookup;
 
     public MainViewModel(
         IJobRunner jobRunner,
@@ -35,7 +37,9 @@ public partial class MainViewModel : ObservableObject
         IOptions<FlowsOptions> flows,
         IOptions<BrowserOptions> browser,
         IOptions<DownloadsOptions> downloads,
+        IOptions<InvoiceLookupOptions> invoiceLookup,
         IInvoiceUploadService invoiceUploadService,
+        IInvoicePdfLookupService invoicePdfLookupService,
         ObservableLogSink logSink)
     {
         _jobRunner = jobRunner;
@@ -44,7 +48,9 @@ public partial class MainViewModel : ObservableObject
         _flows = flows;
         _browser = browser;
         _downloads = downloads;
+        _invoiceLookup = invoiceLookup;
         _invoiceUploadService = invoiceUploadService;
+        _invoicePdfLookupService = invoicePdfLookupService;
         Logs = logSink.Lines;
         FlowPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, flows.Value.DefaultPath));
         var dl = string.IsNullOrWhiteSpace(downloads.Value.RootPath)
@@ -53,6 +59,7 @@ public partial class MainViewModel : ObservableObject
         DownloadsRoot = dl;
         Directory.CreateDirectory(DownloadsRoot);
         InvoiceXMLDataPath = DownloadsRoot;
+        InvoiceOpenMode = _invoiceLookup.Value.DefaultMode;
 
         StartCommand = new AsyncRelayCommand(RunAsync, () => !IsRunning);
         TestLoginCommand = new AsyncRelayCommand(TestLoginAsync, () => !IsRunning && !string.IsNullOrWhiteSpace(_flows.Value.LoginPath));
@@ -66,6 +73,16 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<string> Logs { get; }
 
     public string[] InvoiceKindOptions { get; } = ["sales", "purchase"];
+
+    public InvoiceOpenModeOption[] InvoiceOpenModeOptions { get; } =
+    [
+        new("tracuuhoadon", "Upload XML → tracuuhoadon.vn"),
+        new("issuerLink", "Mở link tra cứu — nhà phát hành (browser)"),
+        new("issuerPdf", "Tải PDF — API nhà phát hành (HTTP)")
+    ];
+
+    [ObservableProperty]
+    private string _invoiceOpenMode = "tracuuhoadon";
 
     public IAsyncRelayCommand StartCommand { get; }
     public IAsyncRelayCommand TestLoginCommand { get; }
@@ -251,12 +268,21 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            StatusMessage = "Opening browser…";
+            StatusMessage = "Opening GDT portal…";
             await EnsureBrowserHostAsync(CancellationToken.None).ConfigureAwait(true);
-            await _browserHost!.Page.GotoAsync(GdtHomeUrl, "domcontentloaded", 120_000, CancellationToken.None)
-                .ConfigureAwait(true);
-            StatusMessage = "GDT portal open — log in and run a search, then use Download only.";
-            _logger.LogInformation("Opened GDT home: {Url}", GdtHomeUrl);
+
+            if (_browserHost!.FindBestGdtPage() is not null)
+            {
+                await _browserHost.FocusGdtTabForAutomationAsync(CancellationToken.None).ConfigureAwait(true);
+                StatusMessage = "GDT tab focused — change month/filter and click Download when ready.";
+            }
+            else
+            {
+                await _browserHost.OpenUrlInTabAsync(GdtHomeUrl, CancellationToken.None).ConfigureAwait(true);
+                StatusMessage = "GDT portal open — log in and run a search, then use Download.";
+            }
+
+            _logger.LogInformation("GDT portal ready for automation");
         }
         catch (Exception ex)
         {
@@ -288,6 +314,30 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
+            if (string.Equals(InvoiceOpenMode, "issuerLink", StringComparison.OrdinalIgnoreCase))
+            {
+                var lookupUrl = _invoicePdfLookupService.ResolveLookupUrl(invoice.FilePath);
+                StatusMessage = "Mở link tra cứu trong browser…";
+                await EnsureBrowserHostAsync(CancellationToken.None).ConfigureAwait(true);
+                await _browserHost!.OpenUrlInTabAsync(lookupUrl, CancellationToken.None).ConfigureAwait(true);
+                StatusMessage = $"Đã mở link tra cứu — nhập captcha/mã bí mật nếu có: {lookupUrl}";
+                _logger.LogInformation("Opened issuer lookup URL {Url} for {Path}", lookupUrl, invoice.FilePath);
+                return;
+            }
+
+            if (string.Equals(InvoiceOpenMode, "issuerPdf", StringComparison.OrdinalIgnoreCase))
+            {
+                StatusMessage = "Tải PDF qua API nhà phát hành…";
+                var xmlDir = Path.GetDirectoryName(invoice.FilePath) ?? DownloadsRoot;
+                var pdfDir = Path.Combine(xmlDir, _invoiceLookup.Value.PdfSubfolder);
+                var pdfPath = await _invoicePdfLookupService
+                    .DownloadPdfAsync(invoice.FilePath, pdfDir, CancellationToken.None)
+                    .ConfigureAwait(true);
+                StatusMessage = $"PDF saved: {pdfPath}";
+                _logger.LogInformation("Issuer PDF lookup saved {Path}", pdfPath);
+                return;
+            }
+
             StatusMessage = "Opening tracuuhoadon.vn and uploading XML…";
             await EnsureBrowserHostAsync(CancellationToken.None).ConfigureAwait(true);
             await _invoiceUploadService
@@ -298,8 +348,8 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Upload to tracuuhoadon.vn failed");
-            StatusMessage = "Upload failed: " + ex.Message;
+            _logger.LogError(ex, "Open invoice failed (mode={Mode})", InvoiceOpenMode);
+            StatusMessage = "Failed: " + ex.Message;
         }
     }
 
@@ -347,11 +397,23 @@ public partial class MainViewModel : ObservableObject
     private InvoiceFile ParseInvoice(string filePath)
     {
         var doc = XDocument.Load(filePath);
-        DateTime.TryParse(
-    doc.Descendants()
-       .FirstOrDefault(x => x.Name.LocalName == "NLap")
-       ?.Value,
-    out var dt2);
+        var errorMessage = doc.Descendants()
+            .Where(x => x.Name.LocalName == "TTin")
+            .Select(t => new
+            {
+                Field = t.Elements().FirstOrDefault(e => e.Name.LocalName == "TTruong")?.Value,
+                Value = t.Elements().FirstOrDefault(e => e.Name.LocalName == "DLieu")?.Value
+            })
+            .FirstOrDefault(x => string.Equals(x.Field, "Error", StringComparison.OrdinalIgnoreCase))
+            ?.Value;
+
+        var supplier = doc.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName == "Ten")
+            ?.Value ?? "";
+
+        if (!string.IsNullOrWhiteSpace(errorMessage))
+            supplier = "[Lỗi tải] " + errorMessage;
+
         return new InvoiceFile
         {
             FilePath = filePath,
@@ -361,10 +423,7 @@ public partial class MainViewModel : ObservableObject
                    .FirstOrDefault(x => x.Name.LocalName == "MST")
                    ?.Value ?? "",
 
-            Supplier =
-                doc.Descendants()
-                   .FirstOrDefault(x => x.Name.LocalName == "Ten")
-                   ?.Value ?? "",
+            Supplier = supplier,
 
             InvoiceNo =
                 doc.Descendants()
@@ -408,6 +467,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             await EnsureBrowserHostAsync(_cts.Token).ConfigureAwait(true);
+            await _browserHost!.FocusGdtTabForAutomationAsync(_cts.Token).ConfigureAwait(true);
 
             var parameters = new JobParameters
             {
@@ -437,6 +497,11 @@ public partial class MainViewModel : ObservableObject
         {
             StatusMessage = "Cancelled.";
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("GDT tab", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(ex, "Download-only: GDT tab not ready");
+            StatusMessage = ex.Message;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Download-only run failed");
@@ -452,8 +517,18 @@ public partial class MainViewModel : ObservableObject
 
     private async Task EnsureBrowserHostAsync(CancellationToken cancellationToken)
     {
-        if (_browserHost is not null)
+        if (_browserHost is not null && _browserHost.IsAlive)
+        {
+            await _browserHost.EnsureActivePageAsync(cancellationToken).ConfigureAwait(true);
             return;
+        }
+
+        if (_browserHost is not null)
+        {
+            _logger.LogInformation("Browser was closed; launching a new session.");
+            await _browserHost.DisposeAsync().ConfigureAwait(true);
+            _browserHost = null;
+        }
 
         var host = new PlaywrightBrowserHost();
         _browserHost = host;

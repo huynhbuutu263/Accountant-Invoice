@@ -13,7 +13,8 @@
     "gdtDenNgaySelector": "#dngay input.ant-calendar-picker-input",
     "gdtTimKiemButton": "button[type='submit']:has-text('Tìm kiếm')",
     "gdtResultRowSelector": ".ant-table-tbody tr",
-    "gdtPageSizeSelect": "xpath=//select[preceding::*[contains(.,'15')]]",
+    "gdtStagingFolder": "{{downloadsRoot}}\\_staging",
+    "gdtPageSizeCombobox": "#__next > section > section > main > div > div > div > div > div.ant-tabs-content.ant-tabs-content-animated.ant-tabs-top-content > div.ant-tabs-tabpane.ant-tabs-tabpane-active > div.ant-row > div:nth-child(2) > div.ant-row-flex.ant-row-flex-space-between.ant-row-flex-middle > div:nth-child(2) > div > div:nth-child(4) > div > div [role='combobox']",
     "gdtBulkExportButton": "button[title*='Xuất'], button[aria-label*='Xuất'], button[title*='In hóa đơn'], button[aria-label*='In hóa đơn'], .ant-btn:has(.anticon-printer), .dx-icon-export",
     "rowNthOffset": "0",
     "gdtRowSelector": ".ant-table-tbody tr >> nth={{rowNth}}",
@@ -79,13 +80,24 @@
       "nthIndex": 0
     },
     {
-      "name": "Tùy chọn — chọn số dòng/trang tối đa (nếu có)",
-      "action": "selectOption",
-      "selector": "{{gdtPageSizeSelect}}",
-      "value": "100",
-      "timeoutMs": 15000,
-      "enabled": false,
-      "comment": "Trên GDT thường là Ant Select (title 15), không phải <select> — bật chỉ sau khi có flow click riêng."
+      "name": "Chọn số dòng/trang tối đa (Ant Select)",
+      "action": "selectAntMax",
+      "selector": "{{gdtPageSizeCombobox}}",
+      "timeoutMs": 30000,
+      "comment": "Mở combobox pagination và chọn số lớn nhất (10/15/20/50/100)."
+    },
+    {
+      "name": "Chờ bảng reload sau đổi page size",
+      "action": "wait",
+      "value": "2000",
+      "waitKind": "delay"
+    },
+    {
+      "name": "Chờ lại bảng kết quả sau đổi page size",
+      "action": "wait",
+      "selector": "{{gdtResultRowSelector}}",
+      "timeoutMs": 120000,
+      "onError": "continue"
     },
     {
       "name": "Tùy chọn — xuất hàng loạt (một file / XML)",
@@ -106,36 +118,36 @@
       "comment": "Đếm dòng có thể gồm header — có thể cần tbody tr:not(:first-child) tùy DOM.",
       "children": [
         {
-          "name": "1 — Chọn dòng {{rowIndex}} (tạo filePath từ dữ liệu dòng)",
+          "name": "1 — Chọn dòng {{rowIndex}} (fallback path nếu XML không đọc được)",
           "action": "click",
           "selector": "{{gdtRowSelector}}",
           "buildRowPath": true,
-          "timeoutMs": 30000,
+          "timeoutMs": 3000,
           "onError": "continue"
         },
         {
           "name": "2 — Chờ GDT tải chi tiết hóa đơn",
           "action": "wait",
-          "value": "3000",
+          "value": "500",
           "waitKind": "delay"
         },
         {
-          "name": "3 — Xuất XML (dùng filePath từ bước 1)",
+          "name": "3 — Xuất XML vào staging",
           "action": "download",
           "selector": "{{gdtXuatXmlButtonSelector}}",
           "nthIndex": 1,
-          "savePath": "{{downloadsRoot}}\\{{rowFilePath}}.zip",
-          "timeoutMs": 120000,
-          "onError": "continue"
-        },
-        {
-          "name": "4 — Giải nén XML",
-          "action": "extractzip",
-          "value": "{{downloadsRoot}}\\{{rowFilePath}}.zip",
-          "timeoutMs": 30000,
+          "savePath": "{{gdtStagingFolder}}\\{{rowIndex}}.zip",
+          "timeoutMs": 2000,
           "onError": "continue"
         }
       ]
+    },
+    {
+      "name": "11 — Giải nén toàn bộ + move theo XML",
+      "action": "finalizeStaging",
+      "value": "{{gdtStagingFolder}}",
+      "timeoutMs": 600000,
+      "onError": "continue"
     }
   ]
 }

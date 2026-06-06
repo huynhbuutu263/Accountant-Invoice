@@ -7,7 +7,7 @@ public static class FlowValidator
     private static readonly HashSet<string> KnownActions =
     [
         "navigate", "click", "fill", "wait", "download", "loop",
-        "press", "selectoption", "extractzip", "upload", "pauseforuser"
+        "press", "selectoption", "selectantmax", "extractzip", "finalizestaging", "upload", "pauseforuser"
     ];
 
     public static void Validate(AutomationFlow flow)
@@ -67,9 +67,17 @@ public static class FlowValidator
                 if (string.IsNullOrWhiteSpace(step.Selector) || string.IsNullOrWhiteSpace(step.Value))
                     throw new FlowValidationException($"Step '{step.Name}' (selectOption) requires selector and value.");
                 break;
+            case "selectantmax":
+                if (string.IsNullOrWhiteSpace(step.Selector))
+                    throw new FlowValidationException($"Step '{step.Name}' (selectAntMax) requires selector (Ant Design combobox).");
+                break;
             case "extractzip":
                 if (string.IsNullOrWhiteSpace(step.Value))
                     throw new FlowValidationException($"Step '{step.Name}' (extractZip) requires value (zip path).");
+                break;
+            case "finalizestaging":
+                if (string.IsNullOrWhiteSpace(step.Value))
+                    throw new FlowValidationException($"Step '{step.Name}' (finalizeStaging) requires value (staging folder path).");
                 break;
             case "loop":
                 if (step.Children is null || step.Children.Count == 0)

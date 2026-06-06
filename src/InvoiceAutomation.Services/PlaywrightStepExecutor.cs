@@ -1,6 +1,8 @@
 using InvoiceAutomation.Core;
 using InvoiceAutomation.Core.Models;
+using InvoiceAutomation.Core.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace InvoiceAutomation.Services;
 
@@ -9,15 +11,18 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
     private readonly ILogger<PlaywrightStepExecutor> _logger;
     private readonly IUserPrompt _userPrompt;
     private readonly IVariableResolver _resolver;
+    private readonly AutomationOptions _options;
 
     public PlaywrightStepExecutor(
         ILogger<PlaywrightStepExecutor> logger,
         IUserPrompt userPrompt,
-        IVariableResolver resolver)
+        IVariableResolver resolver,
+        IOptions<AutomationOptions> options)
     {
         _logger = logger;
         _userPrompt = userPrompt;
         _resolver = resolver;
+        _options = options.Value;
     }
 
     public async Task<string> ExecuteAsync(
@@ -39,7 +44,7 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
             case "click":
                 filePath = await page.ClickAsync(
                     step.Selector!,
-                    timeout,
+                    _options.ClickTimeoutMs,
                     step.NthIndex,
                     step.BuildRowPath == true,
                     cancellationToken).ConfigureAwait(false);
@@ -53,7 +58,8 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
 
                     context.Set("rowFilePath", filePath);
                     context.Set("filePath", filePath);
-                    _logger.LogInformation("Click row → filePath={Path} (used by next download step)", filePath);
+                    SaveRowPathSidecar(context, filePath);
+                    _logger.LogInformation("Click row → filePath={Path} (row sidecar saved for batch finalize)", filePath);
                 }
                 break;
             case "fill":
@@ -69,14 +75,13 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                 var savePath = step.SavePath?.Contains("{{", StringComparison.Ordinal) == true
                     ? _resolver.Resolve(step.SavePath, context, strict: false)
                     : step.SavePath!;
-                if (string.IsNullOrWhiteSpace(context.GetOrEmpty("rowFilePath")))
-                    _logger.LogWarning("Download step: rowFilePath is empty — run click row with buildRowPath first.");
                 _logger.LogInformation(
-                    "Download: selector={Selector}, nthIndex={NthIndex}",
+                    "Download: selector={Selector}, nthIndex={NthIndex}, savePath={SavePath}",
                     step.Selector,
-                    step.NthIndex);
+                    step.NthIndex,
+                    savePath);
                 var path = await page.DownloadAsync(
-                    step.Selector!, savePath, timeout, step.NthIndex, cancellationToken).ConfigureAwait(false);
+                    step.Selector!, savePath, timeout, step.NthIndex, _options.ClickTimeoutMs, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Download saved to {Path}", path);
                 break;
             case "press":
@@ -84,6 +89,14 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                 break;
             case "selectoption":
                 await page.SelectOptionAsync(step.Selector!, step.Value ?? "", timeout, cancellationToken).ConfigureAwait(false);
+                break;
+            case "selectantmax":
+                await page.SelectAntDesignMaxOptionAsync(
+                    step.Selector!,
+                    step.Value,
+                    timeout,
+                    step.NthIndex,
+                    cancellationToken).ConfigureAwait(false);
                 break;
             case "upload":
                 await page.UploadAsync(step.Selector!, step.Value ?? "", timeout, cancellationToken).ConfigureAwait(false);
@@ -95,7 +108,33 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                     ? _resolver.Resolve(step.Value, context, strict: false)
                     : step.Value ?? "";
                 await fileProcessor.ExtractZipAsync(zipPath, cancellationToken).ConfigureAwait(false);
+                var extractedFolder = Path.Combine(
+                    Path.GetDirectoryName(zipPath) ?? ".",
+                    Path.GetFileNameWithoutExtension(zipPath));
+                var downloadsRoot = context.GetOrEmpty("downloadsRoot");
+                var rowFallback = context.GetOrEmpty("rowFilePath");
+                var buyerMst = context.GetOrEmpty("gdtMst");
+                filePath = fileProcessor.RelocateToInvoicePath(
+                    extractedFolder, downloadsRoot, rowFallback, buyerMst);
+                if (!string.IsNullOrWhiteSpace(filePath))
+                {
+                    context.Set("rowFilePath", filePath);
+                    context.Set("filePath", filePath);
+                    _logger.LogInformation("Final invoice path: {Path}", filePath);
+                }
                 _logger.LogInformation("Extracted zip {Path}", zipPath);
+                break;
+            case "finalizestaging":
+                if (fileProcessor is null)
+                    throw new InvalidOperationException("finalizeStaging requires IFileProcessor registration.");
+                var stagingFolder = step.Value?.Contains("{{", StringComparison.Ordinal) == true
+                    ? _resolver.Resolve(step.Value, context, strict: false)
+                    : step.Value ?? "";
+                var root = context.GetOrEmpty("downloadsRoot");
+                var mst = context.GetOrEmpty("gdtMst");
+                var finalized = await fileProcessor.FinalizeStagingFolderAsync(
+                    stagingFolder, root, mst, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("Batch finalize: {Count} invoice folder(s)", finalized.Count);
                 break;
             case "pauseforuser":
                 var message = string.IsNullOrWhiteSpace(step.Value)
@@ -111,12 +150,23 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
         return filePath;
     }
 
+    private static void SaveRowPathSidecar(FlowContext context, string rowFilePath)
+    {
+        var downloadsRoot = context.GetOrEmpty("downloadsRoot");
+        var rowIndex = context.GetOrEmpty("rowIndex");
+        if (string.IsNullOrWhiteSpace(downloadsRoot) || string.IsNullOrWhiteSpace(rowIndex))
+            return;
+
+        StagingPaths.SaveRowPathSidecar(StagingPaths.Folder(downloadsRoot), rowIndex, rowFilePath);
+    }
+
     private static async Task ExecuteWaitAsync(AutomationStep step, IAutomationPage page, int timeout, CancellationToken cancellationToken)
     {
         var kind = (step.WaitKind ?? "").Trim().ToLowerInvariant();
-        if (kind == "delay" || string.IsNullOrWhiteSpace(step.Selector))
+        if (kind == "delay" || (string.IsNullOrWhiteSpace(step.Selector) && !string.IsNullOrWhiteSpace(step.Value)))
         {
-            await page.DelayAsync(100, cancellationToken).ConfigureAwait(false);
+            var ms = int.TryParse(step.Value, out var delayMs) ? delayMs : 100;
+            await page.DelayAsync(ms, cancellationToken).ConfigureAwait(false);
             return;
         }
 

@@ -43,6 +43,7 @@ public partial class App : Application
         services.Configure<BrowserOptions>(configuration.GetSection(BrowserOptions.SectionName));
         services.Configure<FlowsOptions>(configuration.GetSection(FlowsOptions.SectionName));
         services.Configure<DownloadsOptions>(configuration.GetSection(DownloadsOptions.SectionName));
+        services.Configure<InvoiceLookupOptions>(configuration.GetSection(InvoiceLookupOptions.SectionName));
 
         services.AddLogging(builder =>
         {
@@ -57,6 +58,14 @@ public partial class App : Application
         services.AddSingleton<IUserPrompt, WpfUserPrompt>();
         services.AddSingleton<IVariableResolver, VariableResolver>();
         services.AddSingleton<IJobRunner, JobRunner>();
+        services.AddSingleton<IInvoicePdfLookupService>(sp =>
+        {
+            var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<InvoiceLookupOptions>>().Value;
+            var path = Path.Combine(baseDir, opts.IssuersConfigPath);
+            return new IssuerPdfLookupService(
+                sp.GetRequiredService<ILogger<IssuerPdfLookupService>>(),
+                path);
+        });
         services.AddSingleton<MainViewModel>();
 
         _services = services.BuildServiceProvider();

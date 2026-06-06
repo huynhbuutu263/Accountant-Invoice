@@ -12,8 +12,8 @@
     MinWidth="640">
 <Grid Margin="16">
     <Grid.RowDefinitions>
-        <RowDefinition Height="*" />
-        <RowDefinition Height="3*" />
+        <RowDefinition Height="1.3*" />
+        <RowDefinition Height="4*" />
         <RowDefinition Height="10*" />
         <RowDefinition Height="*" />
         </Grid.RowDefinitions>
@@ -29,6 +29,8 @@
                     Maximum="100"
                     IsIndeterminate="{Binding IsRunning}"
                     Value="{Binding Progress}" />
+            <Button Margin="200,0,0,0" Width="100" Content="Cancel" HorizontalAlignment="Right"
+            Command="{Binding CancelCommand}" />
         </StackPanel>
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
@@ -78,10 +80,6 @@
             Margin="0,0,0,8"
             Padding="12,8"
             Command="{Binding StartCommand}" />
-                <Button Visibility="Collapsed" Content="Cancel"
-            Margin="0,0,0,8"
-            Padding="12,8"
-            Command="{Binding CancelCommand}" />
                 <Button Content="Open Browser"
             Margin="0,0,0,8"
             Padding="12,8"
@@ -107,7 +105,7 @@
             <ColumnDefinition Width="2*" />
         </Grid.ColumnDefinitions>
 
-        <GroupBox Grid.Column="0" Grid.ColumnSpan="3" Header="Log" Padding="0" Margin="0,0,0,8">
+        <GroupBox Grid.Column="0" Header="Log" Padding="0" Margin="0,0,0,8">
             <ListBox ItemsSource="{Binding Logs}"
             FontFamily="Consolas"
             FontSize="12"
@@ -119,18 +117,24 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <StackPanel Orientation="Horizontal"
-        Margin="5">
-
-                <Button Content="Load Invoice XML"
-                        Width="150"
-                        Command="{Binding LoadDataCommand}"
-                        />
-
-                <TextBox x:Name="txtSearch"
-                         Text="{Binding InvoiceXMLDataPath, UpdateSourceTrigger=PropertyChanged}"
-                    Width="250"
-                    Margin="10,0,0,0"/>
+            <StackPanel Margin="5">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Load Invoice XML"
+                            Width="150"
+                            Command="{Binding LoadDataCommand}" />
+                    <TextBox x:Name="txtSearch"
+                             Text="{Binding InvoiceXMLDataPath, UpdateSourceTrigger=PropertyChanged}"
+                             Width="250"
+                             Margin="10,0,0,0" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBlock Text="Double-click action:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox Width="400"
+                              ItemsSource="{Binding InvoiceOpenModeOptions}"
+                              DisplayMemberPath="Label"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding InvoiceOpenMode}" />
+                </StackPanel>
             </StackPanel>
 
                 <DataGrid Grid.Row="1"
@@ -153,8 +157,16 @@
                                 Width="120"
                                 Binding="{Binding InvoiceDate, StringFormat=dd/MM/yyyy}" />
 
-                        <DataGridTextColumn Header="File Path"
+                        <DataGridTextColumn Header="Invoice No"
+                                Width="90"
+                                Binding="{Binding InvoiceNo}" />
+
+                        <DataGridTextColumn Header="Supplier / Error"
                                 Width="*"
+                                Binding="{Binding Supplier}" />
+
+                        <DataGridTextColumn Header="File Path"
+                                Width="2*"
                                 Binding="{Binding FilePath}" />
 
                     </DataGrid.Columns>

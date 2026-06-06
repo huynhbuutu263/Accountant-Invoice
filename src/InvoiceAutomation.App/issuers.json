@@ -1,0 +1,88 @@
+{
+  "issuers": [
+    {
+      "id": "petrolimex-ld",
+      "name": "Petrolimex Lâm Đồng (VNPT)",
+      "mstPrefixes": [ "5800000689" ],
+      "lookupFieldPriority": [ "Extra2", "Fkey", "MaTraCuu" ],
+      "directLinkFieldPriority": [ "PortalLink", "Link", "DCTC" ],
+      "pdfUrlTemplate": "",
+      "comment": "Mã tra cứu = Extra2 trong TTKhac (vd 6110150101151). Tra portal VNPT/Petrolimex."
+    },
+    {
+      "id": "central-retail",
+      "name": "Central Retail / Dịch vụ EB",
+      "mstPrefixes": [ "0105696842" ],
+      "lookupFieldPriority": [ "MaTC", "Sbl", "Fkey" ],
+      "directLinkFieldPriority": [ "DCTC", "PortalLink", "Link" ],
+      "pdfUrlTemplate": "",
+      "comment": "DCTC + MaTC trong XML lồng ExtHoaDon/ExtNMau → https://hddt.centralretail.com.vn/"
+    },
+    {
+      "id": "misa-vinfarm",
+      "name": "DALAT VINFARM (MISA meInvoice)",
+      "mstPrefixes": [ "5801473127" ],
+      "lookupFieldPriority": [ "TransactionID", "Fkey" ],
+      "directLinkFieldPriority": [ "PortalLink", "Link" ],
+      "pdfUrlTemplate": "",
+      "comment": "HĐ bán ra — TransactionID trong TTKhac. Tra cứu qua tracuuhoadon hoặc portal MISA."
+    },
+    {
+      "id": "grab",
+      "name": "GRAB (MISA/meInvoice)",
+      "mstPrefixes": [ "0312650437" ],
+      "lookupFieldPriority": [ "Fkey", "SearchKey" ],
+      "directLinkFieldPriority": [ "Website" ],
+      "pdfUrlTemplate": "",
+      "comment": "Mở https://vn.einvoice.grab.com — nhập Fkey/SearchKey từ TTKhac."
+    },
+    {
+      "id": "easyinvoice",
+      "name": "EasyInvoice / SoftDreams",
+      "mstPrefixes": [ "0318381237" ],
+      "lookupFieldPriority": [ "Fkey" ],
+      "directLinkFieldPriority": [ "PortalLink" ],
+      "pdfUrlTemplate": "",
+      "comment": "PortalLink + Fkey trong TTKhac."
+    },
+    {
+      "id": "fpt",
+      "name": "FPT eInvoice",
+      "mstPrefixes": [ "0304997717" ],
+      "lookupFieldPriority": [ "Mã tra cứu", "MaTraCuu", "Fkey" ],
+      "directLinkFieldPriority": [ "Link", "LinkTraCuu", "DCTC" ],
+      "pdfUrlTemplate": "",
+      "comment": "Mã tra cứu trong TTKhac."
+    },
+    {
+      "id": "vnpt",
+      "name": "VNPT Invoice",
+      "mstPrefixes": [ "0313612794", "3901291448" ],
+      "lookupFieldPriority": [ "Mã số bí mật", "Extra2", "Fkey", "MaTraCuu" ],
+      "directLinkFieldPriority": [ "PortalLink", "Link", "DCTC" ],
+      "pdfUrlTemplate": "",
+      "comment": "Mã số bí mật / Extra2 trong TTKhac."
+    },
+    {
+      "id": "viettel",
+      "name": "Viettel / SInvoice",
+      "mstPrefixes": [ "0318356248" ],
+      "lookupFieldPriority": [ "Fkey", "MaTraCuu", "Mã tra cứu" ],
+      "directLinkFieldPriority": [ "PortalLink", "Link", "DCTC" ],
+      "pdfUrlTemplate": "",
+      "comment": "XML có thể không có mã — tra theo SHDon+NLap trên portal."
+    },
+    {
+      "id": "default",
+      "name": "Mặc định",
+      "mstPrefixes": [],
+      "lookupFieldPriority": [
+        "Fkey", "MaTraCuu", "MaTC", "Mã tra cứu", "Mã số bí mật",
+        "Extra2", "TransactionID", "SearchKey"
+      ],
+      "directLinkFieldPriority": [ "DCTC", "PortalLink", "Link", "LinkTraCuu", "Website" ],
+      "pdfUrlTemplate": "",
+      "comment": "Fallback khi MST không khớp issuer cụ thể."
+    }
+  ]
+}

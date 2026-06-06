@@ -12,10 +12,12 @@ public interface IAutomationPage
     Task SetInputValueWithJavaScriptAsync(string selector, string value, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default);
     Task WaitForSelectorAsync(string selector, string state, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default);
     Task DelayAsync(int milliseconds, CancellationToken cancellationToken = default);
-    Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default);
+    Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, int? nthIndex = null, int? clickTimeoutMs = null, CancellationToken cancellationToken = default);
     Task<int> CountAsync(string selector, CancellationToken cancellationToken = default);
     Task PressAsync(string? selector, string key, int? timeoutMs, CancellationToken cancellationToken = default);
     Task SelectOptionAsync(string selector, string optionValueOrLabel, int? timeoutMs, CancellationToken cancellationToken = default);
+    /// <summary>Ant Design 3 combobox: open dropdown and pick the largest numeric menu item.</summary>
+    Task SelectAntDesignMaxOptionAsync(string comboboxSelector, string? dropdownItemSelector, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default);
     Task UploadAsync(string selector, string filePath, int? timeoutMs, CancellationToken cancellationToken = default);
     Task ExpectAsync(StepExpect expect, int? defaultTimeoutMs, CancellationToken cancellationToken = default);
     string? Url { get; }
