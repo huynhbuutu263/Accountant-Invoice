@@ -10,6 +10,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFlowLoader, FlowLoader>();
         services.AddSingleton<IStepExecutor, PlaywrightStepExecutor>();
         services.AddSingleton<IFileProcessor, FileProcessor>();
+        services.AddSingleton<IInvoiceUploadService, TracuuHoadonUploadService>();
         return services;
     }
 }

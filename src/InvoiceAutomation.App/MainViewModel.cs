@@ -26,7 +26,6 @@ public partial class MainViewModel : ObservableObject
     private readonly IOptions<DownloadsOptions> _downloads;
     private CancellationTokenSource? _cts;
     private PlaywrightBrowserHost? _browserHost;
-    private readonly ObservableCollection<InvoiceFile> _invoices = new();
     private readonly IInvoiceUploadService _invoiceUploadService;
 
     public MainViewModel(
@@ -36,6 +35,7 @@ public partial class MainViewModel : ObservableObject
         IOptions<FlowsOptions> flows,
         IOptions<BrowserOptions> browser,
         IOptions<DownloadsOptions> downloads,
+        IInvoiceUploadService invoiceUploadService,
         ObservableLogSink logSink)
     {
         _jobRunner = jobRunner;
@@ -44,8 +44,8 @@ public partial class MainViewModel : ObservableObject
         _flows = flows;
         _browser = browser;
         _downloads = downloads;
+        _invoiceUploadService = invoiceUploadService;
         Logs = logSink.Lines;
-        _invoiceUploadService = new InvoiceUploadService();
         FlowPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, flows.Value.DefaultPath));
         var dl = string.IsNullOrWhiteSpace(downloads.Value.RootPath)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InvoiceAutomation", "Downloads")
@@ -59,6 +59,7 @@ public partial class MainViewModel : ObservableObject
         OpenGdtPortalCommand = new AsyncRelayCommand(OpenGdtPortalAsync, () => !IsRunning);
         DownloadOnlyCommand = new AsyncRelayCommand(RunDownloadOnlyAsync, () => !IsRunning);
         LoadDataCommand = new AsyncRelayCommand(LoadInvoicesAsync, () => !IsRunning);
+        OpenInvoiceCommand = new AsyncRelayCommand<InvoiceFile?>(OpenInvoiceAsync, CanOpenInvoice);
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
     }
 
@@ -113,8 +114,12 @@ public partial class MainViewModel : ObservableObject
         TestLoginCommand.NotifyCanExecuteChanged();
         OpenGdtPortalCommand.NotifyCanExecuteChanged();
         DownloadOnlyCommand.NotifyCanExecuteChanged();
+        OpenInvoiceCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
     }
+
+    private bool CanOpenInvoice(InvoiceFile? invoice) =>
+        !IsRunning && invoice is not null && File.Exists(invoice.FilePath);
 
     private void Cancel()
     {
@@ -274,17 +279,28 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    public IAsyncRelayCommand OpenInvoiceCommand { get; }
+    public IAsyncRelayCommand<InvoiceFile?> OpenInvoiceCommand { get; }
 
-
-
-    private async Task OpenInvoiceAsync()
+    private async Task OpenInvoiceAsync(InvoiceFile? invoice)
     {
-        if (SelectedInvoice == null)
+        if (invoice is null || !File.Exists(invoice.FilePath))
             return;
 
-        await _invoiceUploadService.UploadAsync(
-            SelectedInvoice.FilePath);
+        try
+        {
+            StatusMessage = "Opening tracuuhoadon.vn and uploading XML…";
+            await EnsureBrowserHostAsync(CancellationToken.None).ConfigureAwait(true);
+            await _invoiceUploadService
+                .UploadAsync(_browserHost!, invoice.FilePath, CancellationToken.None)
+                .ConfigureAwait(true);
+            StatusMessage = $"Uploaded {Path.GetFileName(invoice.FilePath)} to tracuuhoadon.vn.";
+            _logger.LogInformation("Uploaded invoice XML {Path}", invoice.FilePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Upload to tracuuhoadon.vn failed");
+            StatusMessage = "Upload failed: " + ex.Message;
+        }
     }
 
     private bool isLoading;
@@ -299,10 +315,13 @@ public partial class MainViewModel : ObservableObject
             {
                 var result = new List<InvoiceFile>();
 
-                var files = Directory.GetFiles(
-                    @"C:\Users\TT\Downloads",
-                    "invoice.xml",
-                    SearchOption.AllDirectories);
+                var root = string.IsNullOrWhiteSpace(InvoiceXMLDataPath)
+                    ? DownloadsRoot
+                    : InvoiceXMLDataPath;
+                if (!Directory.Exists(root))
+                    return result;
+
+                var files = Directory.GetFiles(root, "*.xml", SearchOption.AllDirectories);
 
                 foreach (var file in files)
                 {
@@ -328,7 +347,11 @@ public partial class MainViewModel : ObservableObject
     private InvoiceFile ParseInvoice(string filePath)
     {
         var doc = XDocument.Load(filePath);
-
+        DateTime.TryParse(
+    doc.Descendants()
+       .FirstOrDefault(x => x.Name.LocalName == "NLap")
+       ?.Value,
+    out var dt2);
         return new InvoiceFile
         {
             FilePath = filePath,

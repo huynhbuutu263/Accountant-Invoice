@@ -151,7 +151,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Date"
                                 Width="120"
-                                Binding="{Binding Date}" />
+                                Binding="{Binding InvoiceDate, StringFormat=dd/MM/yyyy}" />
 
                         <DataGridTextColumn Header="File Path"
                                 Width="*"

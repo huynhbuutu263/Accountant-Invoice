@@ -1,10 +1,12 @@
 using InvoiceAutomation.Core;
+using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 
 namespace InvoiceAutomation.Services;
 
 public sealed class PlaywrightBrowserHost : IAsyncDisposable
 {
+    private readonly ILogger<PlaywrightBrowserHost>? _logger;
     private IPlaywright? _playwright;
     private IBrowser? _browser;
     private IBrowserContext? _context;
@@ -12,6 +14,8 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
     private PlaywrightAutomationPage? _wrapper;
 
     public IAutomationPage Page => _wrapper ?? throw new InvalidOperationException("Browser not launched.");
+
+    public PlaywrightBrowserHost(ILogger<PlaywrightBrowserHost>? logger = null) => _logger = logger;
 
     public async Task LaunchAsync(BrowserLaunchSettings settings, CancellationToken cancellationToken = default)
     {
@@ -59,6 +63,77 @@ public sealed class PlaywrightBrowserHost : IAsyncDisposable
             _page = remaining[^1];
             _wrapper?.UpdatePage(_page);
         }
+    }
+
+    /// <summary>
+    /// Uploads a file on tracuuhoadon (or any site). Reuses an open tab whose URL contains
+    /// <paramref name="urlHostContains"/>; only opens a new tab when none exists.
+    /// </summary>
+    public async Task UploadFileOnSiteTabAsync(
+        string url,
+        string urlHostContains,
+        string fileInputSelector,
+        string filePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (_context is null)
+            throw new InvalidOperationException("Browser not launched.");
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException(filePath);
+
+        _context.Page -= OnContextPage;
+        IPage? targetPage = null;
+        try
+        {
+            targetPage = FindOpenPageByHost(urlHostContains);
+            if (targetPage is not null)
+            {
+                _logger?.LogInformation("Reusing open tab for {Host}: {Url}", urlHostContains, targetPage.Url);
+                await targetPage.BringToFrontAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                _logger?.LogInformation("No open tab for {Host}; opening new tab", urlHostContains);
+                targetPage = await _context.NewPageAsync().ConfigureAwait(false);
+                await targetPage.GotoAsync(url, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 90_000
+                }).ConfigureAwait(false);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var input = targetPage.Locator(fileInputSelector).First;
+            await input.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Attached,
+                Timeout = 30_000
+            }).ConfigureAwait(false);
+            await input.SetInputFilesAsync(filePath).ConfigureAwait(false);
+            await targetPage.BringToFrontAsync().ConfigureAwait(false);
+
+            _page = targetPage;
+            _wrapper?.UpdatePage(targetPage);
+        }
+        finally
+        {
+            _context.Page += OnContextPage;
+        }
+    }
+
+    private IPage? FindOpenPageByHost(string urlHostContains)
+    {
+        if (_context is null || string.IsNullOrWhiteSpace(urlHostContains))
+            return null;
+
+        foreach (var page in _context.Pages)
+        {
+            var pageUrl = page.Url ?? "";
+            if (pageUrl.Contains(urlHostContains, StringComparison.OrdinalIgnoreCase))
+                return page;
+        }
+
+        return null;
     }
 
     public async Task SaveStorageStateAsync(string path, CancellationToken cancellationToken = default)

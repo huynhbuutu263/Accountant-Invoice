@@ -19,11 +19,18 @@
       "comment": "Site: https://tracuuhoadon.vn/"
     },
     {
-      "name": "Wait for page shell",
+      "name": "Wait for upload drop zone",
       "action": "wait",
-      "selector": "body",
+      "selector": "div.border-dashed input[type='file']",
+      "timeoutMs": 30000
+    },
+    {
+      "name": "Upload XML (value = full path to .xml)",
+      "action": "upload",
+      "selector": "div.border-dashed input[type='file'], input[type='file'][accept*='xml']",
+      "value": "{{xmlFilePath}}",
       "timeoutMs": 30000,
-      "comment": "TODO: replace with selectors for login, upload, or download UI."
+      "comment": "Set xmlFilePath in job parameters or flow variables when running this flow."
     }
   ]
 }
