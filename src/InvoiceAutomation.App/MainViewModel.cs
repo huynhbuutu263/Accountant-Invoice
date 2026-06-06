@@ -1,10 +1,13 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows.Input;
+using System.Xml.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using InvoiceAutomation.App.Configuration;
 using InvoiceAutomation.App.Logging;
 using InvoiceAutomation.Core;
+using InvoiceAutomation.Core.Models;
 using InvoiceAutomation.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -23,6 +26,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IOptions<DownloadsOptions> _downloads;
     private CancellationTokenSource? _cts;
     private PlaywrightBrowserHost? _browserHost;
+    private readonly ObservableCollection<InvoiceFile> _invoices = new();
+    private readonly IInvoiceUploadService _invoiceUploadService;
 
     public MainViewModel(
         IJobRunner jobRunner,
@@ -40,17 +45,20 @@ public partial class MainViewModel : ObservableObject
         _browser = browser;
         _downloads = downloads;
         Logs = logSink.Lines;
+        _invoiceUploadService = new InvoiceUploadService();
         FlowPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, flows.Value.DefaultPath));
         var dl = string.IsNullOrWhiteSpace(downloads.Value.RootPath)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InvoiceAutomation", "Downloads")
             : downloads.Value.RootPath;
         DownloadsRoot = dl;
         Directory.CreateDirectory(DownloadsRoot);
+        InvoiceXMLDataPath = DownloadsRoot;
 
         StartCommand = new AsyncRelayCommand(RunAsync, () => !IsRunning);
         TestLoginCommand = new AsyncRelayCommand(TestLoginAsync, () => !IsRunning && !string.IsNullOrWhiteSpace(_flows.Value.LoginPath));
         OpenGdtPortalCommand = new AsyncRelayCommand(OpenGdtPortalAsync, () => !IsRunning);
         DownloadOnlyCommand = new AsyncRelayCommand(RunDownloadOnlyAsync, () => !IsRunning);
+        LoadDataCommand = new AsyncRelayCommand(LoadInvoicesAsync, () => !IsRunning);
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
     }
 
@@ -63,6 +71,7 @@ public partial class MainViewModel : ObservableObject
     public IAsyncRelayCommand OpenGdtPortalCommand { get; }
     public IAsyncRelayCommand DownloadOnlyCommand { get; }
     public IRelayCommand CancelCommand { get; }
+    public IAsyncRelayCommand LoadDataCommand { get; }
 
     [ObservableProperty]
     private DateTime _fromDate = DateTime.Today.AddDays(-7);
@@ -82,6 +91,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private string _flowPath = "";
+
+    [ObservableProperty]
+    private string _invoiceXMLDataPath = "";
 
     [ObservableProperty]
     private string _downloadsRoot = "";
@@ -248,6 +260,113 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    public ObservableCollection<InvoiceFile> Invoices { get; }
+            = new();
+
+    private InvoiceFile? _selectedInvoice;
+    public InvoiceFile? SelectedInvoice
+    {
+        get => _selectedInvoice;
+        set
+        {
+            _selectedInvoice = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public IAsyncRelayCommand OpenInvoiceCommand { get; }
+
+
+
+    private async Task OpenInvoiceAsync()
+    {
+        if (SelectedInvoice == null)
+            return;
+
+        await _invoiceUploadService.UploadAsync(
+            SelectedInvoice.FilePath);
+    }
+
+    private bool isLoading;
+
+    private async Task LoadInvoicesAsync()
+    {
+        //IsLoading = true;
+
+        try
+        {
+            var invoices = await Task.Run(() =>
+            {
+                var result = new List<InvoiceFile>();
+
+                var files = Directory.GetFiles(
+                    @"C:\Users\TT\Downloads",
+                    "invoice.xml",
+                    SearchOption.AllDirectories);
+
+                foreach (var file in files)
+                {
+                    result.Add(ParseInvoice(file));
+                }
+
+                return result;
+            });
+
+            Invoices.Clear();
+
+            foreach (var invoice in invoices)
+            {
+                Invoices.Add(invoice);
+            }
+        }
+        finally
+        {
+        //    IsLoading = false;
+        }
+    }
+
+    private InvoiceFile ParseInvoice(string filePath)
+    {
+        var doc = XDocument.Load(filePath);
+
+        return new InvoiceFile
+        {
+            FilePath = filePath,
+
+            TaxCode =
+                doc.Descendants()
+                   .FirstOrDefault(x => x.Name.LocalName == "MST")
+                   ?.Value ?? "",
+
+            Supplier =
+                doc.Descendants()
+                   .FirstOrDefault(x => x.Name.LocalName == "Ten")
+                   ?.Value ?? "",
+
+            InvoiceNo =
+                doc.Descendants()
+                   .FirstOrDefault(x => x.Name.LocalName == "SHDon")
+                   ?.Value ?? "",
+
+            InvoiceDate =
+                DateTime.TryParse(
+                    doc.Descendants()
+                       .FirstOrDefault(x => x.Name.LocalName == "NLap")
+                       ?.Value,
+                    out var dt)
+                ? dt
+                : null,
+
+            TotalAmount =
+                decimal.TryParse(
+                    doc.Descendants()
+                       .FirstOrDefault(x => x.Name.LocalName == "TgTTTBSo")
+                       ?.Value,
+                    out var amount)
+                ? amount
+                : 0
+        };
+    }
     private async Task RunDownloadOnlyAsync()
     {
         var flowPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, _flows.Value.DownloadOnlyPath));
