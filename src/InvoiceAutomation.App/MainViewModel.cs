@@ -91,6 +91,7 @@ public partial class MainViewModel : ObservableObject
         new("tracuuhoadon", "Upload XML → tracuuhoadon.vn → PDF (captcha thủ công)"),
         new("issuerLink", "Mở link tra cứu — nhà phát hành (browser)"),
         new("tracuuhoadonAuto", "Tải PDF tự động — tracuuhoadon (In PDF, bỏ qua gợi ý tra cứu)"),
+        new("tracuuhoadonApiLink", "Auto download by link — tracuuhoadon (saveinvoice-pdf, không captcha)"),
         new("issuerPdf", "Tải PDF — API nhà phát hành (HTTP)")
     ];
 
@@ -164,6 +165,7 @@ public partial class MainViewModel : ObservableObject
 
     private static bool IsAutoDownloadSupportedMode(string mode) =>
         string.Equals(mode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(mode, "tracuuhoadonApiLink", StringComparison.OrdinalIgnoreCase)
         || string.Equals(mode, "issuerPdf", StringComparison.OrdinalIgnoreCase);
 
     partial void OnInvoiceOpenModeChanged(string value) =>
@@ -458,6 +460,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             if (string.Equals(InvoiceOpenMode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(InvoiceOpenMode, "tracuuhoadonApiLink", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(InvoiceOpenMode, "tracuuhoadon", StringComparison.OrdinalIgnoreCase))
             {
                 if (isAutoBatch && string.Equals(InvoiceOpenMode, "tracuuhoadon", StringComparison.OrdinalIgnoreCase))
@@ -469,9 +472,14 @@ public partial class MainViewModel : ObservableObject
                 if (!IsCurrentOpenInvoiceOperation(opId))
                     return;
 
-                var tracuuMode = string.Equals(InvoiceOpenMode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase)
-                    ? TracuuDownloadMode.AutoPrint
-                    : TracuuDownloadMode.ManualCaptcha;
+                var tracuuMode = InvoiceOpenMode switch
+                {
+                    _ when string.Equals(InvoiceOpenMode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase)
+                        => TracuuDownloadMode.AutoPrint,
+                    _ when string.Equals(InvoiceOpenMode, "tracuuhoadonApiLink", StringComparison.OrdinalIgnoreCase)
+                        => TracuuDownloadMode.AutoApiLink,
+                    _ => TracuuDownloadMode.ManualCaptcha
+                };
 
                 await RunTracuuHoadonWorkflowAsync(invoice, opId, tracuuMode, ct, isAutoBatch).ConfigureAwait(true);
                 return;
@@ -504,16 +512,19 @@ public partial class MainViewModel : ObservableObject
         var tracuuPdfPath = InvoicePdfPaths.BuildPdfPath(invoice.FilePath, _invoiceLookup.Value.PdfSubfolder);
         Directory.CreateDirectory(Path.GetDirectoryName(tracuuPdfPath) ?? invoicePdfDir);
 
-        if (isAutoBatch && mode == TracuuDownloadMode.AutoPrint
+        if (isAutoBatch && (mode == TracuuDownloadMode.AutoPrint || mode == TracuuDownloadMode.AutoApiLink)
             && InvoicePdfPaths.HasDownloadedFile(invoice.FilePath, _invoiceLookup.Value.PdfSubfolder))
         {
             _logger.LogDebug("Auto batch skipped — PDF exists for {Path}", invoice.FilePath);
             return;
         }
 
-        StatusMessage = mode == TracuuDownloadMode.AutoPrint
-            ? "Upload XML → tracuuhoadon (auto In PDF)…"
-            : "Upload XML → tracuuhoadon…";
+        StatusMessage = mode switch
+        {
+            TracuuDownloadMode.AutoPrint => "Upload XML → tracuuhoadon (auto In PDF)…",
+            TracuuDownloadMode.AutoApiLink => "Upload XML → tracuuhoadon (tải link API)…",
+            _ => "Upload XML → tracuuhoadon…"
+        };
         await EnsureBrowserHostAsync(ct).ConfigureAwait(true);
         ct.ThrowIfCancellationRequested();
 
@@ -571,6 +582,9 @@ public partial class MainViewModel : ObservableObject
         if (string.Equals(InvoiceOpenMode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase))
             return !InvoicePdfPaths.HasDownloadedFile(invoice.FilePath, _invoiceLookup.Value.PdfSubfolder);
 
+        if (string.Equals(InvoiceOpenMode, "tracuuhoadonApiLink", StringComparison.OrdinalIgnoreCase))
+            return !InvoicePdfPaths.HasDownloadedFile(invoice.FilePath, _invoiceLookup.Value.PdfSubfolder);
+
         return false;
     }
 
@@ -581,7 +595,7 @@ public partial class MainViewModel : ObservableObject
 
         if (!IsAutoDownloadSupportedMode(InvoiceOpenMode))
         {
-            StatusMessage = "Auto download chỉ hỗ trợ mode 3 (Tải PDF tự động) hoặc API nhà phát hành.";
+            StatusMessage = "Auto download chỉ hỗ trợ mode In PDF tự động, link API tracuuhoadon, hoặc API nhà phát hành.";
             return;
         }
 

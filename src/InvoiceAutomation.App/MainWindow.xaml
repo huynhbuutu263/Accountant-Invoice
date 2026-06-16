@@ -135,7 +135,7 @@
                             Width="120"
                             Margin="8,0,0,0"
                             Command="{Binding AutoDownloadInvoicesCommand}"
-                            ToolTip="Loop tất cả row theo Double-click action (mode 3: In PDF liên tục)" />
+                            ToolTip="Loop tất cả row theo mode đang chọn (In PDF / link API / issuer API)" />
                     <TextBox x:Name="txtSearch"
                              Text="{Binding InvoiceXMLDataPath, UpdateSourceTrigger=PropertyChanged}"
                              Width="250"

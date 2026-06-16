@@ -22,6 +22,12 @@ public sealed class TracuuHoadonUploadService : IInvoiceUploadService
     private const string WrongModeSkipHint =
         "Bỏ qua — không thuộc mode đang chọn.";
 
+    private const string NoApiLinkSkipHint =
+        "Bỏ qua — không có link saveinvoice-pdf (cần captcha hoặc In PDF).";
+
+    private const string NoSearchHintApiSkipHint =
+        "Bỏ qua — không có gợi ý tra cứu / datatable với link API.";
+
     private readonly ILogger<TracuuHoadonUploadService> _logger;
 
     public TracuuHoadonUploadService(ILogger<TracuuHoadonUploadService> logger)
@@ -49,9 +55,15 @@ public sealed class TracuuHoadonUploadService : IInvoiceUploadService
         TracuuDownloadMode mode = TracuuDownloadMode.ManualCaptcha,
         bool strictModeMatch = false,
         CancellationToken cancellationToken = default) =>
-        mode == TracuuDownloadMode.AutoPrint
-            ? UploadAndAutoPrintPdfAsync(browserHost, xmlFilePath, pdfSavePath, strictModeMatch, cancellationToken)
-            : UploadAndManualCaptchaPdfAsync(browserHost, xmlFilePath, pdfSavePath, strictModeMatch, cancellationToken);
+        mode switch
+        {
+            TracuuDownloadMode.AutoPrint => UploadAndAutoPrintPdfAsync(
+                browserHost, xmlFilePath, pdfSavePath, strictModeMatch, cancellationToken),
+            TracuuDownloadMode.AutoApiLink => UploadAndAutoApiLinkPdfAsync(
+                browserHost, xmlFilePath, pdfSavePath, strictModeMatch, cancellationToken),
+            _ => UploadAndManualCaptchaPdfAsync(
+                browserHost, xmlFilePath, pdfSavePath, strictModeMatch, cancellationToken)
+        };
 
     private async Task<TracuuWorkflowResult> UploadAndAutoPrintPdfAsync(
         PlaywrightBrowserHost browserHost,
@@ -98,6 +110,68 @@ public sealed class TracuuHoadonUploadService : IInvoiceUploadService
             RequiresManualPrint = true,
             StatusHint = PrintOnlyHint
         };
+    }
+
+    private async Task<TracuuWorkflowResult> UploadAndAutoApiLinkPdfAsync(
+        PlaywrightBrowserHost browserHost,
+        string xmlFilePath,
+        string pdfSavePath,
+        bool strictModeMatch,
+        CancellationToken cancellationToken)
+    {
+        await UploadAsync(browserHost, xmlFilePath, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        TracuuInvoiceActionInfo action;
+        try
+        {
+            action = await browserHost.DetectTracuuInvoiceActionAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not detect tracuuhoadon invoice action for API link download.");
+            action = new TracuuInvoiceActionInfo();
+        }
+
+        if (strictModeMatch)
+        {
+            if (!action.HasSearchHint)
+            {
+                _logger.LogInformation("tracuuhoadon API link batch: skipped — no search hint for {Path}", xmlFilePath);
+                return new TracuuWorkflowResult { Skipped = true, StatusHint = NoSearchHintApiSkipHint };
+            }
+
+            if (!action.HasDirectPdfLink)
+            {
+                _logger.LogInformation("tracuuhoadon API link batch: skipped — no saveinvoice-pdf link for {Path}", xmlFilePath);
+                return new TracuuWorkflowResult { Skipped = true, StatusHint = NoApiLinkSkipHint };
+            }
+        }
+        else if (!action.HasDirectPdfLink)
+        {
+            _logger.LogInformation("tracuuhoadon API link: no saveinvoice-pdf link for {Path}", xmlFilePath);
+            return new TracuuWorkflowResult { Skipped = true, StatusHint = NoApiLinkSkipHint };
+        }
+
+        try
+        {
+            _logger.LogInformation(
+                "tracuuhoadon API link: fetching PDF via session {Href}",
+                action.PdfLinkHref);
+            var saved = await browserHost.SaveTracuuPdfAsync(pdfSavePath, action.PdfLinkHref, cancellationToken)
+                .ConfigureAwait(false);
+            await browserHost.CloseTracuuAuxiliaryTabsAsync(cancellationToken).ConfigureAwait(false);
+            return new TracuuWorkflowResult { PdfPath = saved };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "tracuuhoadon API link fetch failed for {Path}", xmlFilePath);
+            return new TracuuWorkflowResult
+            {
+                Skipped = true,
+                StatusHint = "Không tải được PDF qua link API — thử mode captcha thủ công."
+            };
+        }
     }
 
     private async Task<TracuuWorkflowResult> UploadAndManualCaptchaPdfAsync(
