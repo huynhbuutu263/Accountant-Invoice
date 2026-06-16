@@ -16,6 +16,22 @@ public sealed class IssuerPdfLookupService : IInvoicePdfLookupService
         _issuersConfigPath = issuersConfigPath;
     }
 
+    public bool HasTraCuuLookup(string xmlFilePath)
+    {
+        if (!File.Exists(xmlFilePath))
+            return false;
+
+        var (parsed, issuer) = ParseWithIssuer(xmlFilePath);
+        if (!string.IsNullOrWhiteSpace(parsed.LookupUrl)
+            && Uri.TryCreate(parsed.LookupUrl.Trim(), UriKind.Absolute, out _))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(parsed.LookupCode))
+            return true;
+
+        return !string.IsNullOrWhiteSpace(BuildDownloadUrl(parsed, issuer));
+    }
+
     public string ResolveLookupUrl(string xmlFilePath)
     {
         var (parsed, issuer) = ParseWithIssuer(xmlFilePath);
@@ -44,10 +60,9 @@ public sealed class IssuerPdfLookupService : IInvoicePdfLookupService
 
         var downloadUrl = ResolveLookupUrl(xmlFilePath);
 
-        var outDir = pdfOutputDirectory ?? Path.GetDirectoryName(xmlFilePath) ?? ".";
+        var outDir = pdfOutputDirectory ?? Path.Combine(Path.GetDirectoryName(xmlFilePath) ?? ".", "pdf");
         Directory.CreateDirectory(outDir);
-        var baseName = Path.GetFileNameWithoutExtension(xmlFilePath);
-        var pdfPath = Path.Combine(outDir, baseName + ".pdf");
+        var pdfPath = Path.Combine(outDir, InvoicePdfPaths.ResolvePdfBaseName(xmlFilePath) + ".pdf");
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("InvoiceAutomation/1.0");

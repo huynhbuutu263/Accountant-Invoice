@@ -67,6 +67,17 @@ Set `Flows:DefaultPath` in `appsettings.json` to e.g. `flows/gdt-tra-cuu.json` w
 - **Browser** — `Headless`, optional `Channel`, `StorageStatePath` for session reuse.
 - **Flows** — `DefaultPath`, optional `LoginPath` (used by **Test login flow** in the UI).
 - **Downloads** — `RootPath` (empty = `%LocalAppData%\InvoiceAutomation\Downloads`).
+- **InvoiceLookup** — `DefaultMode` (`tracuuhoadon` | `issuerPdf`), `IssuersConfigPath` (`issuers.json`), `PdfSubfolder`.
+
+## Double-click invoice row (two modes)
+
+| Mode | Behavior |
+|------|----------|
+| **Upload XML → tracuuhoadon.vn** | Browser tab, upload XML (existing) |
+| **Mở link tra cứu — nhà phát hành (browser)** | Parse XML → mở link tra cứu/tải; captcha/mã bí mật nhập tay |
+| **Tải PDF — API nhà phát hành (HTTP)** | Parse XML → HTTP GET PDF, lưu file (no browser) |
+
+Configure issuer endpoints in `issuers.json` (`pdfUrlTemplate` with `{lookupCode}`, `{sellerMst}`, …). If XML contains a direct `Link` / `LinkTraCuu`, that URL is used when the template is empty.
 
 ## Solution layout
 

@@ -4,7 +4,7 @@ public sealed class InvoiceLookupOptions
 {
     public const string SectionName = "InvoiceLookup";
 
-    /// <summary>tracuuhoadon | issuerLink | issuerPdf</summary>
+    /// <summary>tracuuhoadon | issuerLink | tracuuhoadonAuto | issuerPdf</summary>
     public string DefaultMode { get; set; } = "tracuuhoadon";
 
     public string IssuersConfigPath { get; set; } = "issuers.json";

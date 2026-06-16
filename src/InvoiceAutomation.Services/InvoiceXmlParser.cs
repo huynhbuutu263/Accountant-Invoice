@@ -8,8 +8,8 @@ public sealed class InvoiceXmlParser
 {
     private static readonly string[] DefaultLookupFields =
     [
-        "Fkey", "MaTraCuu", "MaTCuu", "MaTC", "Mã tra cứu", "SearchKey", "Mã số bí mật",
-        "Extra2", "TransactionID", "Sbl", "Key", "MaCQT"
+        "Fkey", "MaTraCuu", "MaTCuu", "MaTC", "Mã tra cứu", "SearchKey", "KeySearch", "Mã số bí mật",
+        "Extra2", "TransactionID", "Sbl", "Key", "MaCQT", "chungTuLienQuan"
     ];
 
     private static readonly string[] DefaultLinkFields =

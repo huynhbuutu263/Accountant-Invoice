@@ -57,11 +57,20 @@
     {
       "id": "vnpt",
       "name": "VNPT Invoice",
-      "mstPrefixes": [ "0313612794", "3901291448" ],
-      "lookupFieldPriority": [ "Mã số bí mật", "Extra2", "Fkey", "MaTraCuu" ],
+      "mstPrefixes": [ "0313612794", "3901291448", "0303656489" ],
+      "lookupFieldPriority": [ "KeySearch", "Mã số bí mật", "Extra2", "Fkey", "MaTraCuu", "SearchKey" ],
       "directLinkFieldPriority": [ "PortalLink", "Link", "DCTC" ],
       "pdfUrlTemplate": "",
       "comment": "Mã số bí mật / Extra2 trong TTKhac."
+    },
+    {
+      "id": "mwg",
+      "name": "Thế Giới Di Động (MWG)",
+      "mstPrefixes": [ "0303217354" ],
+      "lookupFieldPriority": [ "chungTuLienQuan", "Fkey", "MaTraCuu", "SearchKey" ],
+      "directLinkFieldPriority": [ "PortalLink", "Link", "DCTC" ],
+      "pdfUrlTemplate": "",
+      "comment": "MWG — mã chứng từ liên quan trong TTKhac (vd 04984OV25010881362)."
     },
     {
       "id": "viettel",
@@ -78,7 +87,7 @@
       "mstPrefixes": [],
       "lookupFieldPriority": [
         "Fkey", "MaTraCuu", "MaTC", "Mã tra cứu", "Mã số bí mật",
-        "Extra2", "TransactionID", "SearchKey"
+        "Extra2", "TransactionID", "SearchKey", "KeySearch", "chungTuLienQuan"
       ],
       "directLinkFieldPriority": [ "DCTC", "PortalLink", "Link", "LinkTraCuu", "Website" ],
       "pdfUrlTemplate": "",

@@ -54,6 +54,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock Visibility="Collapsed" Grid.Row="0" Grid.Column="0" Text="From" Margin="0,4,12,4" VerticalAlignment="Center" />
                     <DatePicker Visibility="Collapsed" Grid.Row="0" Grid.Column="1" SelectedDate="{Binding FromDate}" Margin="0,4" />
@@ -72,6 +73,9 @@
                     <TextBox Visibility="Collapsed" Grid.Row="5" Grid.Column="1" Text="{Binding GdtMst, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
                     <TextBlock Visibility="Collapsed" Grid.Row="6" Grid.Column="0" Text="Password" Margin="0,4,12,4" VerticalAlignment="Center" />
                     <PasswordBox Visibility="Collapsed" Grid.Row="6" Grid.Column="1" x:Name="PasswordInput" Margin="0,4" />
+                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Export" Margin="0,4,12,4" VerticalAlignment="Center"
+                               ToolTip="Folder đích — {MST}/{MM-yyyy}/{file}, không có pdf\ hay subfolder hóa đơn" />
+                    <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding ExportRoot, UpdateSourceTrigger=PropertyChanged}" Margin="0,4" />
                 </Grid>
             </GroupBox>
 
@@ -90,6 +94,11 @@
             Padding="12,8"
             Command="{Binding DownloadOnlyCommand}"
             ToolTip="Loops each table row: click row → download XML (run after Tìm kiếm shows results)" />
+                <Button Content="Export all"
+            Margin="0,0,0,8"
+            Padding="12,8"
+            Command="{Binding ExportDownloadsCommand}"
+            ToolTip="Copy PDF/ZIP vào Export: {MST}/{MM-yyyy}/{file}" />
                 <Button Visibility="Collapsed" Content="Test login flow"
             Padding="12,8"
             Command="{Binding TestLoginCommand}"
@@ -122,6 +131,11 @@
                     <Button Content="Load Invoice XML"
                             Width="150"
                             Command="{Binding LoadDataCommand}" />
+                    <Button Content="Auto download"
+                            Width="120"
+                            Margin="8,0,0,0"
+                            Command="{Binding AutoDownloadInvoicesCommand}"
+                            ToolTip="Loop tất cả row theo Double-click action (mode 3: In PDF liên tục)" />
                     <TextBox x:Name="txtSearch"
                              Text="{Binding InvoiceXMLDataPath, UpdateSourceTrigger=PropertyChanged}"
                              Width="250"
@@ -153,6 +167,10 @@
                     </i:Interaction.Triggers>
 
                     <DataGrid.Columns>
+                        <DataGridTextColumn Header="STT"
+                                Width="45"
+                                Binding="{Binding Stt}" />
+
                         <DataGridTextColumn Header="Date"
                                 Width="120"
                                 Binding="{Binding InvoiceDate, StringFormat=dd/MM/yyyy}" />
@@ -160,6 +178,11 @@
                         <DataGridTextColumn Header="Invoice No"
                                 Width="90"
                                 Binding="{Binding InvoiceNo}" />
+
+                        <DataGridCheckBoxColumn Header="PDF"
+                                Width="45"
+                                Binding="{Binding HasPdf, Mode=OneWay}"
+                                IsReadOnly="True" />
 
                         <DataGridTextColumn Header="Supplier / Error"
                                 Width="*"

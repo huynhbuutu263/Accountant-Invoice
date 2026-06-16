@@ -25,6 +25,11 @@ public partial class MainViewModel : ObservableObject
     private readonly IOptions<BrowserOptions> _browser;
     private readonly IOptions<DownloadsOptions> _downloads;
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _openInvoiceCts;
+    private int _openInvoiceOpId;
+    private readonly object _openInvoiceStartLock = new();
+    private string? _lastOpenInvoicePath;
+    private long _lastOpenInvoiceTickMs;
     private PlaywrightBrowserHost? _browserHost;
     private readonly IInvoiceUploadService _invoiceUploadService;
     private readonly IInvoicePdfLookupService _invoicePdfLookupService;
@@ -59,6 +64,11 @@ public partial class MainViewModel : ObservableObject
         DownloadsRoot = dl;
         Directory.CreateDirectory(DownloadsRoot);
         InvoiceXMLDataPath = DownloadsRoot;
+        ExportRoot = string.IsNullOrWhiteSpace(downloads.Value.ExportRootPath)
+            ? ""
+            : downloads.Value.ExportRootPath;
+        if (!string.IsNullOrWhiteSpace(ExportRoot))
+            Directory.CreateDirectory(ExportRoot);
         InvoiceOpenMode = _invoiceLookup.Value.DefaultMode;
 
         StartCommand = new AsyncRelayCommand(RunAsync, () => !IsRunning);
@@ -66,6 +76,8 @@ public partial class MainViewModel : ObservableObject
         OpenGdtPortalCommand = new AsyncRelayCommand(OpenGdtPortalAsync, () => !IsRunning);
         DownloadOnlyCommand = new AsyncRelayCommand(RunDownloadOnlyAsync, () => !IsRunning);
         LoadDataCommand = new AsyncRelayCommand(LoadInvoicesAsync, () => !IsRunning);
+        ExportDownloadsCommand = new AsyncRelayCommand(ExportAllDownloadsAsync, () => !IsRunning);
+        AutoDownloadInvoicesCommand = new AsyncRelayCommand(RunAutoDownloadInvoicesAsync, CanAutoDownloadInvoices);
         OpenInvoiceCommand = new AsyncRelayCommand<InvoiceFile?>(OpenInvoiceAsync, CanOpenInvoice);
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
     }
@@ -76,8 +88,9 @@ public partial class MainViewModel : ObservableObject
 
     public InvoiceOpenModeOption[] InvoiceOpenModeOptions { get; } =
     [
-        new("tracuuhoadon", "Upload XML → tracuuhoadon.vn"),
+        new("tracuuhoadon", "Upload XML → tracuuhoadon.vn → PDF (captcha thủ công)"),
         new("issuerLink", "Mở link tra cứu — nhà phát hành (browser)"),
+        new("tracuuhoadonAuto", "Tải PDF tự động — tracuuhoadon (In PDF, bỏ qua gợi ý tra cứu)"),
         new("issuerPdf", "Tải PDF — API nhà phát hành (HTTP)")
     ];
 
@@ -90,6 +103,8 @@ public partial class MainViewModel : ObservableObject
     public IAsyncRelayCommand DownloadOnlyCommand { get; }
     public IRelayCommand CancelCommand { get; }
     public IAsyncRelayCommand LoadDataCommand { get; }
+    public IAsyncRelayCommand ExportDownloadsCommand { get; }
+    public IAsyncRelayCommand AutoDownloadInvoicesCommand { get; }
 
     [ObservableProperty]
     private DateTime _fromDate = DateTime.Today.AddDays(-7);
@@ -117,6 +132,9 @@ public partial class MainViewModel : ObservableObject
     private string _downloadsRoot = "";
 
     [ObservableProperty]
+    private string _exportRoot = "";
+
+    [ObservableProperty]
     private string _statusMessage = "Ready.";
 
     [ObservableProperty]
@@ -131,12 +149,25 @@ public partial class MainViewModel : ObservableObject
         TestLoginCommand.NotifyCanExecuteChanged();
         OpenGdtPortalCommand.NotifyCanExecuteChanged();
         DownloadOnlyCommand.NotifyCanExecuteChanged();
+        LoadDataCommand.NotifyCanExecuteChanged();
+        ExportDownloadsCommand.NotifyCanExecuteChanged();
+        AutoDownloadInvoicesCommand.NotifyCanExecuteChanged();
         OpenInvoiceCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanOpenInvoice(InvoiceFile? invoice) =>
         !IsRunning && invoice is not null && File.Exists(invoice.FilePath);
+
+    private bool CanAutoDownloadInvoices() =>
+        !IsRunning && Invoices.Count > 0 && IsAutoDownloadSupportedMode(InvoiceOpenMode);
+
+    private static bool IsAutoDownloadSupportedMode(string mode) =>
+        string.Equals(mode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(mode, "issuerPdf", StringComparison.OrdinalIgnoreCase);
+
+    partial void OnInvoiceOpenModeChanged(string value) =>
+        AutoDownloadInvoicesCommand.NotifyCanExecuteChanged();
 
     private void Cancel()
     {
@@ -307,19 +338,88 @@ public partial class MainViewModel : ObservableObject
 
     public IAsyncRelayCommand<InvoiceFile?> OpenInvoiceCommand { get; }
 
-    private async Task OpenInvoiceAsync(InvoiceFile? invoice)
+    private (int OpId, CancellationToken Token) BeginOpenInvoiceOperation()
+    {
+        var opId = Interlocked.Increment(ref _openInvoiceOpId);
+        _openInvoiceCts?.Cancel();
+        _openInvoiceCts?.Dispose();
+        _openInvoiceCts = new CancellationTokenSource();
+        _browserHost?.CancelManualPdfDownloadWait();
+        return (opId, _openInvoiceCts.Token);
+    }
+
+    private bool IsCurrentOpenInvoiceOperation(int opId) => opId == _openInvoiceOpId;
+
+    /// <summary>Returns immediately so the next double-click can cancel the previous PDF wait.</summary>
+    private Task OpenInvoiceAsync(InvoiceFile? invoice)
     {
         if (invoice is null || !File.Exists(invoice.FilePath))
-            return;
+            return Task.CompletedTask;
 
+        if (invoice.Supplier.StartsWith("[Lỗi tải]", StringComparison.OrdinalIgnoreCase))
+        {
+            StatusMessage = "Bỏ qua — hóa đơn lỗi tải từ GDT.";
+            _logger.LogInformation("Double-click skipped — download error XML: {Path}", invoice.FilePath);
+            return Task.CompletedTask;
+        }
+
+        lock (_openInvoiceStartLock)
+        {
+            var now = Environment.TickCount64;
+            if (string.Equals(_lastOpenInvoicePath, invoice.FilePath, StringComparison.OrdinalIgnoreCase)
+                && now - _lastOpenInvoiceTickMs < 500)
+            {
+                _logger.LogDebug("Ignored duplicate double-click on {Path}", invoice.FilePath);
+                return Task.CompletedTask;
+            }
+
+            _lastOpenInvoicePath = invoice.FilePath;
+            _lastOpenInvoiceTickMs = now;
+        }
+
+        var (opId, ct) = BeginOpenInvoiceOperation();
+        _ = RunOpenInvoiceWorkflowAsync(invoice, opId, ct, isAutoBatch: false);
+        return Task.CompletedTask;
+    }
+
+    private async Task RunOpenInvoiceWorkflowAsync(
+        InvoiceFile invoice,
+        int opId,
+        CancellationToken ct,
+        bool isAutoBatch = false)
+    {
         try
         {
+            var invoiceXmlDir = Path.GetDirectoryName(invoice.FilePath) ?? DownloadsRoot;
+            var invoicePdfDir = Path.Combine(invoiceXmlDir, _invoiceLookup.Value.PdfSubfolder);
+
             if (string.Equals(InvoiceOpenMode, "issuerLink", StringComparison.OrdinalIgnoreCase))
             {
+                if (isAutoBatch)
+                {
+                    _logger.LogDebug("Auto batch skipped — issuerLink không hỗ trợ auto: {Path}", invoice.FilePath);
+                    return;
+                }
+
+                if (!_invoicePdfLookupService.HasTraCuuLookup(invoice.FilePath))
+                {
+                    StatusMessage = "Bỏ qua — XML không có mã/link tra cứu (Fkey, KeySearch, MaTraCuu…).";
+                    _logger.LogInformation("Double-click skipped — no tra cứu link/code for {Path}", invoice.FilePath);
+                    return;
+                }
+
                 var lookupUrl = _invoicePdfLookupService.ResolveLookupUrl(invoice.FilePath);
+                if (!IsCurrentOpenInvoiceOperation(opId))
+                    return;
+
                 StatusMessage = "Mở link tra cứu trong browser…";
-                await EnsureBrowserHostAsync(CancellationToken.None).ConfigureAwait(true);
-                await _browserHost!.OpenUrlInTabAsync(lookupUrl, CancellationToken.None).ConfigureAwait(true);
+                await EnsureBrowserHostAsync(ct).ConfigureAwait(true);
+                ct.ThrowIfCancellationRequested();
+                await _browserHost!.OpenUrlInTabAsync(lookupUrl, ct).ConfigureAwait(true);
+
+                if (!IsCurrentOpenInvoiceOperation(opId))
+                    return;
+
                 StatusMessage = $"Đã mở link tra cứu — nhập captcha/mã bí mật nếu có: {lookupUrl}";
                 _logger.LogInformation("Opened issuer lookup URL {Url} for {Path}", lookupUrl, invoice.FilePath);
                 return;
@@ -327,33 +427,248 @@ public partial class MainViewModel : ObservableObject
 
             if (string.Equals(InvoiceOpenMode, "issuerPdf", StringComparison.OrdinalIgnoreCase))
             {
+                if (!IsCurrentOpenInvoiceOperation(opId))
+                    return;
+
+                if (!_invoicePdfLookupService.HasTraCuuLookup(invoice.FilePath))
+                {
+                    if (isAutoBatch)
+                    {
+                        _logger.LogDebug("Auto batch skipped — no tra cứu code for {Path}", invoice.FilePath);
+                        return;
+                    }
+
+                    StatusMessage = "Bỏ qua — XML không có mã/link tra cứu (Fkey, KeySearch, MaTraCuu…).";
+                    _logger.LogInformation("Double-click skipped — no tra cứu link/code for {Path}", invoice.FilePath);
+                    return;
+                }
+
                 StatusMessage = "Tải PDF qua API nhà phát hành…";
-                var xmlDir = Path.GetDirectoryName(invoice.FilePath) ?? DownloadsRoot;
-                var pdfDir = Path.Combine(xmlDir, _invoiceLookup.Value.PdfSubfolder);
-                var pdfPath = await _invoicePdfLookupService
-                    .DownloadPdfAsync(invoice.FilePath, pdfDir, CancellationToken.None)
+                var issuerPdfPath = await _invoicePdfLookupService
+                    .DownloadPdfAsync(invoice.FilePath, invoicePdfDir, ct)
                     .ConfigureAwait(true);
-                StatusMessage = $"PDF saved: {pdfPath}";
-                _logger.LogInformation("Issuer PDF lookup saved {Path}", pdfPath);
+
+                if (!IsCurrentOpenInvoiceOperation(opId))
+                    return;
+
+                StatusMessage = $"PDF saved: {issuerPdfPath}";
+                _logger.LogInformation("Issuer PDF lookup saved {Path}", issuerPdfPath);
+                MarkInvoiceHasPdf(invoice.FilePath);
                 return;
             }
 
-            StatusMessage = "Opening tracuuhoadon.vn and uploading XML…";
-            await EnsureBrowserHostAsync(CancellationToken.None).ConfigureAwait(true);
-            await _invoiceUploadService
-                .UploadAsync(_browserHost!, invoice.FilePath, CancellationToken.None)
-                .ConfigureAwait(true);
-            StatusMessage = $"Uploaded {Path.GetFileName(invoice.FilePath)} to tracuuhoadon.vn.";
-            _logger.LogInformation("Uploaded invoice XML {Path}", invoice.FilePath);
+            if (string.Equals(InvoiceOpenMode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(InvoiceOpenMode, "tracuuhoadon", StringComparison.OrdinalIgnoreCase))
+            {
+                if (isAutoBatch && string.Equals(InvoiceOpenMode, "tracuuhoadon", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogDebug("Auto batch skipped — mode captcha thủ công: {Path}", invoice.FilePath);
+                    return;
+                }
+
+                if (!IsCurrentOpenInvoiceOperation(opId))
+                    return;
+
+                var tracuuMode = string.Equals(InvoiceOpenMode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase)
+                    ? TracuuDownloadMode.AutoPrint
+                    : TracuuDownloadMode.ManualCaptcha;
+
+                await RunTracuuHoadonWorkflowAsync(invoice, opId, tracuuMode, ct, isAutoBatch).ConfigureAwait(true);
+                return;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (!IsCurrentOpenInvoiceOperation(opId))
+                _logger.LogDebug("Open invoice superseded for {Path}", invoice.FilePath);
         }
         catch (Exception ex)
         {
+            if (!IsCurrentOpenInvoiceOperation(opId))
+                return;
+
             _logger.LogError(ex, "Open invoice failed (mode={Mode})", InvoiceOpenMode);
             StatusMessage = "Failed: " + ex.Message;
         }
     }
 
-    private bool isLoading;
+    private async Task RunTracuuHoadonWorkflowAsync(
+        InvoiceFile invoice,
+        int opId,
+        TracuuDownloadMode mode,
+        CancellationToken ct,
+        bool isAutoBatch = false)
+    {
+        var invoiceXmlDir = Path.GetDirectoryName(invoice.FilePath) ?? DownloadsRoot;
+        var invoicePdfDir = Path.Combine(invoiceXmlDir, _invoiceLookup.Value.PdfSubfolder);
+        var tracuuPdfPath = InvoicePdfPaths.BuildPdfPath(invoice.FilePath, _invoiceLookup.Value.PdfSubfolder);
+        Directory.CreateDirectory(Path.GetDirectoryName(tracuuPdfPath) ?? invoicePdfDir);
+
+        if (isAutoBatch && mode == TracuuDownloadMode.AutoPrint
+            && InvoicePdfPaths.HasDownloadedFile(invoice.FilePath, _invoiceLookup.Value.PdfSubfolder))
+        {
+            _logger.LogDebug("Auto batch skipped — PDF exists for {Path}", invoice.FilePath);
+            return;
+        }
+
+        StatusMessage = mode == TracuuDownloadMode.AutoPrint
+            ? "Upload XML → tracuuhoadon (auto In PDF)…"
+            : "Upload XML → tracuuhoadon…";
+        await EnsureBrowserHostAsync(ct).ConfigureAwait(true);
+        ct.ThrowIfCancellationRequested();
+
+        if (mode == TracuuDownloadMode.ManualCaptcha)
+            StatusMessage = "Upload xong — tải PDF/ZIP trên browser (app chờ 10 phút)…";
+
+        var tracuuResult = await _invoiceUploadService
+            .UploadAndDownloadPdfAsync(_browserHost!, invoice.FilePath, tracuuPdfPath, mode, isAutoBatch, ct)
+            .ConfigureAwait(true);
+
+        if (!IsCurrentOpenInvoiceOperation(opId))
+            return;
+
+        if (tracuuResult.Cancelled)
+        {
+            _logger.LogDebug("PDF wait cancelled for {Path} — superseded by another row", invoice.FilePath);
+            return;
+        }
+
+        if (tracuuResult.Skipped)
+        {
+            if (!isAutoBatch)
+                StatusMessage = tracuuResult.StatusHint ?? "Bỏ qua.";
+            _logger.LogInformation("tracuuhoadon skipped for {Path}: {Hint}", invoice.FilePath, tracuuResult.StatusHint);
+            return;
+        }
+
+        if (tracuuResult.PdfSaved)
+        {
+            MarkInvoiceHasPdf(invoice.FilePath);
+            StatusMessage = $"File saved: {tracuuResult.PdfPath}";
+            _logger.LogInformation("Download saved {Path}", tracuuResult.PdfPath);
+        }
+        else if (tracuuResult.RequiresManualPrint)
+        {
+            StatusMessage = tracuuResult.StatusHint
+                ?? "tracuuhoadon: chỉ có In PDF — lưu thủ công vào thư mục pdf\\.";
+            _logger.LogInformation("tracuuhoadon print-only for {Path}: {Hint}", invoice.FilePath, StatusMessage);
+        }
+        else
+        {
+            StatusMessage = "Không bắt được file tải về (PDF/ZIP) trong 10 phút.";
+            _logger.LogInformation("Manual download not captured for {Path}", invoice.FilePath);
+        }
+    }
+
+    private bool ShouldAutoDownloadInvoice(InvoiceFile invoice)
+    {
+        if (invoice.Supplier.StartsWith("[Lỗi tải]", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (string.Equals(InvoiceOpenMode, "issuerPdf", StringComparison.OrdinalIgnoreCase))
+            return _invoicePdfLookupService.HasTraCuuLookup(invoice.FilePath);
+
+        if (string.Equals(InvoiceOpenMode, "tracuuhoadonAuto", StringComparison.OrdinalIgnoreCase))
+            return !InvoicePdfPaths.HasDownloadedFile(invoice.FilePath, _invoiceLookup.Value.PdfSubfolder);
+
+        return false;
+    }
+
+    private async Task RunAutoDownloadInvoicesAsync()
+    {
+        if (Invoices.Count == 0)
+            return;
+
+        if (!IsAutoDownloadSupportedMode(InvoiceOpenMode))
+        {
+            StatusMessage = "Auto download chỉ hỗ trợ mode 3 (Tải PDF tự động) hoặc API nhà phát hành.";
+            return;
+        }
+
+        _cts = new CancellationTokenSource();
+        IsRunning = true;
+        Progress = 0;
+
+        var list = Invoices.ToList();
+        var total = list.Count;
+        var processed = 0;
+        var skipped = 0;
+
+        try
+        {
+            await EnsureBrowserHostAsync(_cts.Token).ConfigureAwait(true);
+
+            for (var i = 0; i < total; i++)
+            {
+                _cts.Token.ThrowIfCancellationRequested();
+                var invoice = list[i];
+
+                if (!ShouldAutoDownloadInvoice(invoice))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                processed++;
+                Progress = (i + 1) / (double)total * 100;
+                SelectedInvoice = invoice;
+                StatusMessage = $"Auto download {processed}/{total} (bỏ qua {skipped}): {invoice.InvoiceNo}";
+
+                var opId = Interlocked.Increment(ref _openInvoiceOpId);
+                await RunOpenInvoiceWorkflowAsync(invoice, opId, _cts.Token, isAutoBatch: true).ConfigureAwait(true);
+            }
+
+            Progress = 100;
+            StatusMessage = $"Auto download xong — xử lý {processed}, bỏ qua {skipped}.";
+            _logger.LogInformation("Auto download completed: processed={Processed}, skipped={Skipped}", processed, skipped);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Auto download cancelled.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Auto download failed");
+            StatusMessage = "Auto download failed: " + ex.Message;
+        }
+        finally
+        {
+            IsRunning = false;
+            _cts?.Dispose();
+            _cts = null;
+        }
+    }
+
+    private async Task ExportAllDownloadsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ExportRoot))
+        {
+            StatusMessage = "Chưa cấu hình Export folder.";
+            return;
+        }
+
+        try
+        {
+            var dataRoot = string.IsNullOrWhiteSpace(InvoiceXMLDataPath)
+                ? DownloadsRoot
+                : InvoiceXMLDataPath;
+
+            var count = await Task.Run(() =>
+                InvoiceExportPaths.ExportAllDownloads(
+                    dataRoot, ExportRoot, _invoiceLookup.Value.PdfSubfolder)).ConfigureAwait(true);
+
+            Directory.CreateDirectory(ExportRoot);
+            StatusMessage = count > 0
+                ? $"Đã export {count} file PDF/ZIP → {ExportRoot}"
+                : $"Không có file trong thư mục pdf\\ để export.";
+            _logger.LogInformation("Exported {Count} downloads to {ExportRoot}", count, ExportRoot);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Export all downloads failed");
+            StatusMessage = "Export failed: " + ex.Message;
+        }
+    }
 
     private async Task LoadInvoicesAsync()
     {
@@ -383,10 +698,13 @@ public partial class MainViewModel : ObservableObject
 
             Invoices.Clear();
 
-            foreach (var invoice in invoices)
+            for (var i = 0; i < invoices.Count; i++)
             {
-                Invoices.Add(invoice);
+                invoices[i].Stt = i + 1;
+                Invoices.Add(invoices[i]);
             }
+
+            AutoDownloadInvoicesCommand.NotifyCanExecuteChanged();
         }
         finally
         {
@@ -446,8 +764,18 @@ public partial class MainViewModel : ObservableObject
                        ?.Value,
                     out var amount)
                 ? amount
-                : 0
+                : 0,
+
+            HasPdf = InvoicePdfPaths.HasDownloadedFile(filePath, _invoiceLookup.Value.PdfSubfolder)
         };
+    }
+
+    private void MarkInvoiceHasPdf(string xmlFilePath)
+    {
+        var invoice = Invoices.FirstOrDefault(i =>
+            string.Equals(i.FilePath, xmlFilePath, StringComparison.OrdinalIgnoreCase));
+        if (invoice is not null)
+            invoice.HasPdf = true;
     }
     private async Task RunDownloadOnlyAsync()
     {

@@ -234,6 +234,24 @@ public sealed class FileProcessor : IFileProcessor
         }
     }
 
+    public static bool LooksLikeZip(string path)
+    {
+        try
+        {
+            using var fs = File.OpenRead(path);
+            var buf = new byte[4];
+            if (fs.Read(buf, 0, 4) != 4)
+                return false;
+
+            return buf[0] == (byte)'P' && buf[1] == (byte)'K'
+                   && ((buf[2] == 3 && buf[3] == 4) || (buf[2] == 5 && buf[3] == 6) || (buf[2] == 7 && buf[3] == 8));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static bool LooksLikeXml(string path)
     {
         try
