@@ -12,7 +12,7 @@
     "gdtTuNgaySelector": "#tngay input.ant-calendar-picker-input",
     "gdtDenNgaySelector": "#dngay input.ant-calendar-picker-input",
     "gdtTimKiemButton": "button[type='submit']:has-text('Tìm kiếm')",
-    "gdtResultRowSelector": ".ant-table-tbody tr",
+    "gdtResultRowSelector": ".ant-table-tbody > tr:not(.ant-table-measure-row):not(.ant-table-placeholder)",
     "gdtRowDownloadSelector": ".ant-table-tbody tr:nth-child({{rowIndex}}) a, .ant-table-tbody tr:nth-child({{rowIndex}}) button"
   },
   "steps": [

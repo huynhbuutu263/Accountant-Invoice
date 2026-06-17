@@ -164,29 +164,47 @@ public sealed class JobRunner : IJobRunner
         var loopShallow = CloneWithoutChildren(loopStep);
         var loopResolved = _resolver.ResolveStep(loopShallow, ctx, strict);
         var kind = (loopResolved.LoopKind ?? "rows").Trim().ToLowerInvariant();
+        if (kind == "pages")
+            return await RunPagesLoopAsync(loopStep, loopResolved, ctx, page, fileProcessor, strict, opt, result, ct)
+                .ConfigureAwait(false);
+
         int iterations;
+        var rowSelector = loopResolved.RowSelector ?? "";
         if (kind == "rows")
         {
-            var sel = loopResolved.RowSelector ?? "";
-            iterations = await page.CountAsync(sel, ct).ConfigureAwait(false);
+            if (ctx.TryGet("pageIndex", out var pageIndex) && pageIndex != "1")
+                await page.DelayAsync(250, ct).ConfigureAwait(false);
+
+            iterations = await page.CountDataRowsAsync(rowSelector, ct).ConfigureAwait(false);
+            if (iterations == 0)
+            {
+                await page.DelayAsync(400, ct).ConfigureAwait(false);
+                iterations = await page.CountDataRowsAsync(rowSelector, ct).ConfigureAwait(false);
+            }
         }
         else
-        {
             iterations = loopResolved.Count ?? 0;
-        }
 
         var max = loopResolved.MaxIterations ?? 1000;
-        iterations = Math.Min(Math.Max(iterations, 0), max);
         var rowVar = string.IsNullOrWhiteSpace(loopResolved.RowVariable) ? "rowIndex" : loopResolved.RowVariable!;
 
-        _logger.LogInformation("Loop {Name}: {Iterations} iterations (kind {Kind})", loopResolved.Name, iterations, kind);
+        _logger.LogInformation("Loop {Name}: {Iterations} data row(s) on page (kind {Kind})", loopResolved.Name, iterations, kind);
 
         if (loopStep.Children is null || loopStep.Children.Count == 0)
             return LoopOutcome.Continue;
 
-        for (var i = 1; i <= iterations; i++)
+        if (kind == "rows" && iterations == 0)
+        {
+            _logger.LogWarning("Loop {Name}: no data rows detected — check table selector / search results", loopResolved.Name);
+            return LoopOutcome.Continue;
+        }
+
+        var rowLimit = kind == "rows" ? Math.Min(iterations, max) : Math.Min(Math.Max(iterations, 0), max);
+
+        for (var i = 1; i <= rowLimit; i++)
         {
             ct.ThrowIfCancellationRequested();
+
             ctx.Set(rowVar, i.ToString());
             var rowNthOffset = ctx.TryGet("rowNthOffset", out var offsetStr) && int.TryParse(offsetStr, out var off)
                 ? off
@@ -196,14 +214,79 @@ public sealed class JobRunner : IJobRunner
             ctx.Set("rowIndex0", rowNth.ToString());
             _logger.LogInformation(
                 "Loop {Name}: row {Current}/{Total} (rowNth={RowNth}, offset={Offset})",
-                loopResolved.Name, i, iterations, rowNth, rowNthOffset);
+                loopResolved.Name, i, rowLimit, rowNth, rowNthOffset);
+
+            var skipRestOfRow = false;
             foreach (var child in loopStep.Children)
             {
+                if (skipRestOfRow)
+                    continue;
+
+                var stepsBefore = result.Steps.Count;
                 var outcome = await RunStepAsync(child, ctx, page, fileProcessor, strict, opt, result, ct).ConfigureAwait(false);
                 if (outcome == LoopOutcome.AbortJob)
                     return LoopOutcome.AbortJob;
                 if (outcome == LoopOutcome.FailJob)
                     return LoopOutcome.FailJob;
+
+                if (kind == "rows"
+                    && child.Action.Equals("click", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(child.OnError, "continue", StringComparison.OrdinalIgnoreCase)
+                    && result.Steps.Count > stepsBefore
+                    && !result.Steps[^1].Success)
+                {
+                    skipRestOfRow = true;
+                    _logger.LogInformation(
+                        "Loop {Name}: row {Current} click failed — skipping download for this row",
+                        loopResolved.Name, i);
+                }
+            }
+        }
+
+        return LoopOutcome.Continue;
+    }
+
+    private async Task<LoopOutcome> RunPagesLoopAsync(
+        AutomationStep loopStep,
+        AutomationStep loopResolved,
+        FlowContext ctx,
+        IAutomationPage page,
+        IFileProcessor? fileProcessor,
+        bool strict,
+        AutomationOptions opt,
+        JobResult result,
+        CancellationToken ct)
+    {
+        if (loopStep.Children is null || loopStep.Children.Count == 0)
+            return LoopOutcome.Continue;
+
+        var maxPages = loopResolved.MaxIterations ?? 100;
+        var nextSelector = loopResolved.Selector;
+        var pageTimeout = Math.Min(loopResolved.TimeoutMs ?? 5_000, 6_000);
+
+        for (var pageNum = 1; pageNum <= maxPages; pageNum++)
+        {
+            ct.ThrowIfCancellationRequested();
+            ctx.Set("pageIndex", pageNum.ToString());
+            _logger.LogInformation("Loop {Name}: page {Page}", loopResolved.Name, pageNum);
+
+            foreach (var child in loopStep.Children)
+            {
+                var outcome = await RunStepAsync(child, ctx, page, fileProcessor, strict, opt, result, ct)
+                    .ConfigureAwait(false);
+                if (outcome == LoopOutcome.AbortJob)
+                    return LoopOutcome.AbortJob;
+                if (outcome == LoopOutcome.FailJob)
+                    return LoopOutcome.FailJob;
+            }
+
+            if (pageNum >= maxPages)
+                break;
+
+            if (!await page.TryClickPaginationNextAsync(nextSelector, pageTimeout, ct).ConfigureAwait(false))
+            {
+                _logger.LogInformation("Loop {Name}: finished after page {Page} (no next page)", loopResolved.Name, pageNum);
+                break;
             }
         }
 

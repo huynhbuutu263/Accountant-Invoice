@@ -4,8 +4,8 @@ public sealed class JobParameters
 {
     public string FromDate { get; init; } = "";
     public string ToDate { get; init; } = "";
-    /// <summary>sales or purchase — passed as variable "invoiceKind" or "tab".</summary>
-    public string InvoiceKind { get; init; } = "sales";
+    /// <summary>purchase (mua vào) | sales (bán ra)</summary>
+    public string InvoiceKind { get; init; } = InvoiceKinds.Purchase;
     public string DownloadsRoot { get; init; } = "";
     public Guid JobId { get; init; }
     /// <summary>GDT portal MST / username — overrides "gdtMst" in the flow JSON.</summary>

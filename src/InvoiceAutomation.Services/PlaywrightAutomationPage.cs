@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using InvoiceAutomation.Core;
+using System.Text.RegularExpressions;
 using InvoiceAutomation.Core.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
@@ -44,9 +45,18 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var loc = _page.Locator(selector);
-        if (nthIndex.HasValue)
-            loc = loc.Nth(nthIndex.Value);
+        ILocator loc;
+        if (buildRowPath && TryParseDataRowIndex(selector, nthIndex, out var dataRowIndex))
+        {
+            loc = await ResolvePopulatedDataRowLocatorAsync(selector, dataRowIndex, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            loc = _page.Locator(selector);
+            if (nthIndex.HasValue)
+                loc = loc.Nth(nthIndex.Value);
+        }
 
         await loc.WaitForAsync(new LocatorWaitForOptions
         {
@@ -175,6 +185,171 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
 
     public async Task<int> CountAsync(string selector, CancellationToken cancellationToken = default) =>
         await _page.Locator(selector).CountAsync().ConfigureAwait(false);
+
+    private static readonly Regex PaginationRangeRegex = new(
+        @"(\d+)\s*[-–—]\s*(\d+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    public async Task<int> CountDataRowsAsync(string selector, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var fromPagination = await TryGetCurrentPageRowCountFromPaginationAsync(cancellationToken).ConfigureAwait(false);
+        if (fromPagination is > 0)
+        {
+            _logger?.LogDebug("CountDataRows: pagination={Pagination}", fromPagination.Value);
+            return fromPagination.Value;
+        }
+
+        var visibleCount = await CountVisibleDataTableRowsAsync(NormalizeDataRowSelector(selector), cancellationToken)
+            .ConfigureAwait(false);
+        if (visibleCount == 0)
+        {
+            visibleCount = await CountVisibleDataTableRowsAsync(".ant-table-tbody > tr", cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        _logger?.LogDebug("CountDataRows: visible={Visible}", visibleCount);
+        return visibleCount;
+    }
+
+    private async Task<int> CountVisibleDataTableRowsAsync(string rowSelector, CancellationToken cancellationToken)
+    {
+        var rows = _page.Locator(rowSelector);
+        var count = await rows.CountAsync().ConfigureAwait(false);
+        if (count == 0)
+            return 0;
+
+        // Ant Design: measure row is usually first; data rows follow.
+        var visible = 0;
+        for (var i = 0; i < count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var row = rows.Nth(i);
+            var cls = await row.GetAttributeAsync("class").ConfigureAwait(false) ?? "";
+            if (cls.Contains("ant-table-measure-row", StringComparison.OrdinalIgnoreCase)
+                || cls.Contains("ant-table-placeholder", StringComparison.OrdinalIgnoreCase)
+                || cls.Contains("ant-table-expanded-row", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (await row.IsVisibleAsync().ConfigureAwait(false))
+                visible++;
+        }
+
+        return visible;
+    }
+
+    private static async Task<bool> IsDataTableRowAsync(ILocator row)
+    {
+        if (!await row.IsVisibleAsync().ConfigureAwait(false))
+            return false;
+
+        var cls = await row.GetAttributeAsync("class").ConfigureAwait(false) ?? "";
+        if (cls.Contains("ant-table-measure-row", StringComparison.OrdinalIgnoreCase)
+            || cls.Contains("ant-table-placeholder", StringComparison.OrdinalIgnoreCase)
+            || cls.Contains("ant-table-expanded-row", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return true;
+    }
+
+    private async Task<int?> TryGetCurrentPageRowCountFromPaginationAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        foreach (var sel in new[]
+        {
+            ".ant-table-pagination .ant-pagination-total-text",
+            ".ant-pagination-total-text",
+            ".ant-pagination .ant-pagination-total-text"
+        })
+        {
+            var loc = _page.Locator(sel);
+            if (await loc.CountAsync().ConfigureAwait(false) == 0)
+                continue;
+
+            var text = (await loc.First.InnerTextAsync().ConfigureAwait(false)).Trim();
+            var match = PaginationRangeRegex.Match(text);
+            if (!match.Success)
+                continue;
+
+            if (!int.TryParse(match.Groups[1].Value, out var start)
+                || !int.TryParse(match.Groups[2].Value, out var end)
+                || end < start)
+                continue;
+
+            return end - start + 1;
+        }
+
+        return null;
+    }
+
+    private static bool TryParseDataRowIndex(string selector, int? nthIndex, out int dataRowIndex)
+    {
+        dataRowIndex = nthIndex ?? 0;
+        if (nthIndex.HasValue)
+            return true;
+
+        var match = Regex.Match(selector, @">>\s*nth=(\d+)", RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return false;
+
+        return int.TryParse(match.Groups[1].Value, out dataRowIndex);
+    }
+
+    private async Task<ILocator> ResolvePopulatedDataRowLocatorAsync(
+        string selector,
+        int dataRowZeroBased,
+        CancellationToken cancellationToken)
+    {
+        var baseSelector = NormalizeDataRowSelector(PlaywrightNthChainRegex.Replace(selector, "").Trim());
+        var rows = _page.Locator(baseSelector);
+
+        // Fast path: data rows are contiguous at the top of tbody on GDT.
+        var direct = rows.Nth(dataRowZeroBased);
+        if (await IsDataTableRowAsync(direct).ConfigureAwait(false))
+            return direct;
+
+        var count = await rows.CountAsync().ConfigureAwait(false);
+        var seen = 0;
+        for (var i = 0; i < count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var row = rows.Nth(i);
+            if (!await IsDataTableRowAsync(row).ConfigureAwait(false))
+                continue;
+
+            if (seen == dataRowZeroBased)
+                return row;
+
+            seen++;
+        }
+
+        throw new TimeoutException(
+            $"Data row index {dataRowZeroBased} not found ({seen} visible data row(s) in table).");
+    }
+
+    internal static string NormalizeDataRowSelector(string selector)
+    {
+        if (string.IsNullOrWhiteSpace(selector))
+            return ".ant-table-tbody > tr:not(.ant-table-measure-row):not(.ant-table-placeholder)";
+
+        if (selector.Contains("ant-table-row", StringComparison.OrdinalIgnoreCase))
+            return selector.Replace(
+                ".ant-table-tbody > tr.ant-table-row",
+                ".ant-table-tbody > tr:not(.ant-table-measure-row):not(.ant-table-placeholder)",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (selector.Contains("ant-table-tbody", StringComparison.OrdinalIgnoreCase)
+            && selector.Contains(" tr", StringComparison.OrdinalIgnoreCase))
+        {
+            return selector.Replace(
+                ".ant-table-tbody tr",
+                ".ant-table-tbody > tr:not(.ant-table-measure-row):not(.ant-table-placeholder)",
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        return selector;
+    }
 
     public async Task PressAsync(string? selector, string key, int? timeoutMs, CancellationToken cancellationToken = default)
     {
@@ -459,6 +634,163 @@ public sealed class PlaywrightAutomationPage : IAutomationPage
         }
 
         return GdtRowPathBuilder.TokenizeRowText(await row.InnerTextAsync().ConfigureAwait(false));
+    }
+
+    public async Task<bool> TryClickPaginationNextAsync(string? selector, int? timeoutMs, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var clickTimeout = Math.Min(timeoutMs ?? 4_000, 6_000);
+        var waitTimeout = 5_000;
+
+        if (await IsPaginationOnLastPageAsync(selector).ConfigureAwait(false))
+        {
+            _logger?.LogInformation("Pagination: already on last page.");
+            return false;
+        }
+
+        var pageBefore = await GetActivePaginationPageAsync().ConfigureAwait(false);
+        var fingerprintBefore = await GetTablePageFingerprintAsync().ConfigureAwait(false);
+        var candidates = BuildPaginationNextSelectors(selector);
+
+        foreach (var sel in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var btn = _page.Locator(sel).First;
+            if (await btn.CountAsync().ConfigureAwait(false) == 0)
+                continue;
+
+            if (!await IsEnabledPaginationNextButtonAsync(btn).ConfigureAwait(false))
+                continue;
+
+            _logger?.LogInformation("Pagination: clicking next page via {Selector}", sel);
+            try
+            {
+                await btn.ScrollIntoViewIfNeededAsync().ConfigureAwait(false);
+                await btn.ClickAsync(new LocatorClickOptions { Timeout = clickTimeout }).ConfigureAwait(false);
+            }
+            catch (TimeoutException ex)
+            {
+                _logger?.LogDebug(ex, "Pagination: click timed out for {Selector}", sel);
+                continue;
+            }
+
+            if (await WaitForTablePageChangeAsync(fingerprintBefore, pageBefore, waitTimeout, cancellationToken)
+                    .ConfigureAwait(false))
+                return true;
+
+            _logger?.LogWarning("Pagination: click on {Selector} did not advance the table.", sel);
+        }
+
+        _logger?.LogInformation("Pagination: next page button not available (last page).");
+        return false;
+    }
+
+    private async Task<bool> IsPaginationOnLastPageAsync(string? preferredSelector = null)
+    {
+        foreach (var sel in BuildPaginationNextSelectors(preferredSelector).Take(3))
+        {
+            var btn = _page.Locator(sel).First;
+            if (await btn.CountAsync().ConfigureAwait(false) == 0)
+                continue;
+
+            if (await IsEnabledPaginationNextButtonAsync(btn).ConfigureAwait(false))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static List<string> BuildPaginationNextSelectors(string? selector)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(selector))
+        {
+            foreach (var part in selector.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                candidates.Add(part);
+        }
+
+        candidates.AddRange(
+        [
+            ".ant-table-pagination button.ant-btn-primary.ant-btn-icon-only:not([disabled]):has(.anticon-right)",
+            "button.ant-btn-primary.ant-btn-icon-only:not([disabled]):has(.anticon-right)",
+            ".ant-table-pagination .ant-pagination-next:not(.ant-pagination-disabled) button",
+            ".ant-pagination-next:not(.ant-pagination-disabled) button",
+            "li.ant-pagination-next:not(.ant-pagination-disabled) button"
+        ]);
+
+        return candidates.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static async Task<bool> IsEnabledPaginationNextButtonAsync(ILocator btn)
+    {
+        if (await btn.IsDisabledAsync().ConfigureAwait(false))
+            return false;
+
+        var ariaDisabled = await btn.GetAttributeAsync("aria-disabled").ConfigureAwait(false);
+        if (string.Equals(ariaDisabled, "true", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var parentLi = btn.Locator("xpath=ancestor::li[contains(@class,'ant-pagination-next')][1]");
+        if (await parentLi.CountAsync().ConfigureAwait(false) > 0)
+        {
+            var cls = await parentLi.GetAttributeAsync("class").ConfigureAwait(false) ?? "";
+            if (cls.Contains("ant-pagination-disabled", StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return await btn.IsVisibleAsync().ConfigureAwait(false);
+    }
+
+    private async Task<int?> GetActivePaginationPageAsync()
+    {
+        var activePage = _page.Locator(".ant-pagination-item-active");
+        if (await activePage.CountAsync().ConfigureAwait(false) == 0)
+            return null;
+
+        var text = (await activePage.First.InnerTextAsync().ConfigureAwait(false)).Trim();
+        return int.TryParse(text, out var page) ? page : null;
+    }
+
+    private async Task<string> GetTablePageFingerprintAsync()
+    {
+        var activePage = _page.Locator(".ant-pagination-item-active");
+        if (await activePage.CountAsync().ConfigureAwait(false) > 0)
+        {
+            var pageNo = (await activePage.First.InnerTextAsync().ConfigureAwait(false)).Trim();
+            if (!string.IsNullOrWhiteSpace(pageNo))
+                return "page:" + pageNo;
+        }
+
+        var firstRow = _page.Locator(NormalizeDataRowSelector(".ant-table-tbody tr")).First;
+        if (await firstRow.CountAsync().ConfigureAwait(false) > 0)
+            return "row:" + (await firstRow.InnerTextAsync().ConfigureAwait(false)).Trim();
+
+        return "";
+    }
+
+    private async Task<bool> WaitForTablePageChangeAsync(
+        string fingerprintBefore,
+        int? pageBefore,
+        int timeoutMs,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await _page.WaitForTimeoutAsync(150).ConfigureAwait(false);
+
+            var pageAfter = await GetActivePaginationPageAsync().ConfigureAwait(false);
+            if (pageBefore.HasValue && pageAfter.HasValue && pageAfter.Value > pageBefore.Value)
+                return true;
+
+            var fingerprintAfter = await GetTablePageFingerprintAsync().ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(fingerprintBefore)
+                && !string.Equals(fingerprintBefore, fingerprintAfter, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     private static WaitUntilState? ParseWaitUntil(string? waitUntil)

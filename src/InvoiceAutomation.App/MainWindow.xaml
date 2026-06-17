@@ -98,7 +98,7 @@
             Margin="0,0,0,8"
             Padding="12,8"
             Command="{Binding ExportDownloadsCommand}"
-            ToolTip="Copy PDF/ZIP vào Export: {MST}/{MM-yyyy}/{file}" />
+            ToolTip="Theo radio Mua vào/Bán ra — export XML + PDF → {MST}/{tháng}/{folder}" />
                 <Button Visibility="Collapsed" Content="Test login flow"
             Padding="12,8"
             Command="{Binding TestLoginCommand}"
@@ -140,6 +140,20 @@
                              Text="{Binding InvoiceXMLDataPath, UpdateSourceTrigger=PropertyChanged}"
                              Width="250"
                              Margin="10,0,0,0" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBlock Text="Loại HĐ:" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <RadioButton Content="Mua vào"
+                                 GroupName="InvoiceKind"
+                                 IsChecked="{Binding IsPurchaseInvoice}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,16,0"
+                                 ToolTip="MST người mua + tên người bán" />
+                    <RadioButton Content="Bán ra"
+                                 GroupName="InvoiceKind"
+                                 IsChecked="{Binding IsSalesInvoice}"
+                                 VerticalAlignment="Center"
+                                 ToolTip="MST người bán + tên người mua" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                     <TextBlock Text="Double-click action:" VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -184,7 +198,7 @@
                                 Binding="{Binding HasPdf, Mode=OneWay}"
                                 IsReadOnly="True" />
 
-                        <DataGridTextColumn Header="Supplier / Error"
+                        <DataGridTextColumn Header="Đối tác / Lỗi"
                                 Width="*"
                                 Binding="{Binding Supplier}" />
 

@@ -94,6 +94,9 @@ public sealed class StubPage : IAutomationPage
     public Task DelayAsync(int milliseconds, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<string> DownloadAsync(string selector, string savePath, int? timeoutMs, int? nthIndex = null, int? clickTimeoutMs = null, CancellationToken cancellationToken = default) => Task.FromResult(savePath);
     public Task<int> CountAsync(string selector, CancellationToken cancellationToken = default) => Task.FromResult(0);
+    public Task<int> CountDataRowsAsync(string selector, CancellationToken cancellationToken = default) => Task.FromResult(0);
+    public Task<bool> TryClickPaginationNextAsync(string? selector, int? timeoutMs, CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
     public Task PressAsync(string? selector, string key, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SelectOptionAsync(string selector, string optionValueOrLabel, int? timeoutMs, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task SelectAntDesignMaxOptionAsync(string comboboxSelector, string? dropdownItemSelector, int? timeoutMs, int? nthIndex = null, CancellationToken cancellationToken = default) => Task.CompletedTask;

@@ -1,13 +1,14 @@
 {
   "name": "GDT — tải hết dòng rồi giải nén + move theo XML",
-  "version": "2.0.0",
-  "description": "Phase 1: lặp click từng dòng + xuất XML vào _staging. Phase 2: giải nén toàn bộ zip, đọc XML, move vào thư mục đích (fallback: path từ dòng).",
+  "version": "2.1.0",
+  "description": "Phase 1: lặp từng trang → từng dòng + xuất XML vào _staging. Phase 2: giải nén toàn bộ zip, đọc XML, move vào thư mục đích.",
   "variables": {
-    "gdtResultRowSelector": ".ant-table-tbody tr",
+    "gdtResultRowSelector": ".ant-table-tbody > tr:not(.ant-table-measure-row):not(.ant-table-placeholder)",
     "gdtStagingFolder": "{{downloadsRoot}}\\_staging",
     "gdtPageSizeCombobox": "#__next > section > section > main > div > div > div > div > div.ant-tabs-content.ant-tabs-content-animated.ant-tabs-top-content > div.ant-tabs-tabpane.ant-tabs-tabpane-active > div.ant-row > div:nth-child(2) > div.ant-row-flex.ant-row-flex-space-between.ant-row-flex-middle > div:nth-child(2) > div > div:nth-child(4) > div > div [role='combobox']",
+    "gdtNextPageButtonSelector": ".ant-table-pagination button.ant-btn-primary.ant-btn-icon-only:not([disabled]):has(.anticon-right), .ant-table-pagination .ant-pagination-next:not(.ant-pagination-disabled) button, button.ant-btn-primary.ant-btn-icon-only:not([disabled]):has(.anticon-right)",
     "rowNthOffset": "0",
-    "gdtRowSelector": ".ant-table-tbody tr >> nth={{rowNth}}",
+    "gdtRowSelector": ".ant-table-tbody > tr:not(.ant-table-measure-row):not(.ant-table-placeholder) >> nth={{rowNth}}",
     "gdtXuatXmlButtonSelector": "button:has(#icon_ketxuat)"
   },
   "steps": [
@@ -38,36 +39,48 @@
       "onError": "continue"
     },
     {
-      "name": "Phase 1 — lặp: click dòng + xuất XML (chưa giải nén)",
+      "name": "Phase 1 — lặp từng trang: tải hết dòng → sang trang tiếp",
       "action": "loop",
-      "loopKind": "rows",
-      "rowSelector": "{{gdtResultRowSelector}}",
-      "rowVariable": "rowIndex",
-      "maxIterations": 500,
+      "loopKind": "pages",
+      "selector": "{{gdtNextPageButtonSelector}}",
+      "timeoutMs": 5000,
+      "maxIterations": 100,
+      "comment": "Sau mỗi trang: click nút > (anticon-right) nếu không disabled.",
       "children": [
         {
-          "name": "1 — Chọn dòng {{rowIndex}}",
-          "action": "click",
-          "selector": "{{gdtRowSelector}}",
-          "buildRowPath": true,
-          "timeoutMs": 5000,
-          "onError": "continue",
-          "comment": "Lưu row path sidecar (_staging/{rowIndex}.rowpath) cho phase 2."
-        },
-        {
-          "name": "2 — Chờ GDT tải chi tiết hóa đơn",
-          "action": "wait",
-          "value": "500",
-          "waitKind": "delay"
-        },
-        {
-          "name": "3 — Xuất XML vào staging",
-          "action": "download",
-          "selector": "{{gdtXuatXmlButtonSelector}}",
-          "nthIndex": 1,
-          "savePath": "{{gdtStagingFolder}}\\{{rowIndex}}.zip",
-          "timeoutMs": 2000,
-          "onError": "continue"
+          "name": "Lặp dòng trên trang {{pageIndex}}",
+          "action": "loop",
+          "loopKind": "rows",
+          "rowSelector": "{{gdtResultRowSelector}}",
+          "rowVariable": "rowIndex",
+          "maxIterations": 500,
+          "children": [
+            {
+              "name": "1 — Chọn dòng {{rowIndex}} (trang {{pageIndex}})",
+              "action": "click",
+              "selector": "{{gdtRowSelector}}",
+              "buildRowPath": true,
+              "timeoutMs": 3000,
+              "retry": { "count": 1 },
+              "onError": "continue",
+              "comment": "Lưu row path sidecar (_staging/p{page}_r{row}.rowpath)."
+            },
+            {
+              "name": "2 — Chờ GDT tải chi tiết hóa đơn",
+              "action": "wait",
+              "value": "500",
+              "waitKind": "delay"
+            },
+            {
+              "name": "3 — Xuất XML vào staging",
+              "action": "download",
+              "selector": "{{gdtXuatXmlButtonSelector}}",
+              "nthIndex": 1,
+              "savePath": "{{gdtStagingFolder}}\\p{{pageIndex}}_{{rowIndex}}.zip",
+              "timeoutMs": 2000,
+              "onError": "continue"
+            }
+          ]
         }
       ]
     },

@@ -65,7 +65,8 @@ public sealed class FileProcessor : IFileProcessor
         string extractedFolderPath,
         string downloadsRoot,
         string? rowFallbackRelativePath,
-        string? buyerMstOverride = null)
+        string? mstOverride = null,
+        string invoiceKind = InvoiceKinds.Purchase)
     {
         if (!Directory.Exists(extractedFolderPath))
             return rowFallbackRelativePath;
@@ -77,7 +78,7 @@ public sealed class FileProcessor : IFileProcessor
         string? targetRelative = null;
 
         if (xmlPath is not null &&
-            InvoicePathBuilder.TryBuildFromXmlFile(xmlPath, buyerMstOverride, out var fromXml))
+            InvoicePathBuilder.TryBuildFromXmlFile(xmlPath, mstOverride, out var fromXml, invoiceKind))
         {
             targetRelative = fromXml;
             _logger.LogInformation("Invoice path from XML: {Path}", targetRelative);
@@ -111,7 +112,8 @@ public sealed class FileProcessor : IFileProcessor
     public async Task<IReadOnlyList<string>> FinalizeStagingFolderAsync(
         string stagingFolder,
         string downloadsRoot,
-        string? buyerMstOverride = null,
+        string? mstOverride = null,
+        string invoiceKind = InvoiceKinds.Purchase,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -143,7 +145,7 @@ public sealed class FileProcessor : IFileProcessor
 
             try
             {
-                var finalPath = RelocateToInvoicePath(dir, downloadsRoot, rowFallback, buyerMstOverride);
+                var finalPath = RelocateToInvoicePath(dir, downloadsRoot, rowFallback, mstOverride, invoiceKind);
                 if (!string.IsNullOrWhiteSpace(finalPath))
                     results.Add(finalPath);
             }

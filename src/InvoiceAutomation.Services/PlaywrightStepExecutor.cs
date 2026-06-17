@@ -113,9 +113,9 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                     Path.GetFileNameWithoutExtension(zipPath));
                 var downloadsRoot = context.GetOrEmpty("downloadsRoot");
                 var rowFallback = context.GetOrEmpty("rowFilePath");
-                var buyerMst = context.GetOrEmpty("gdtMst");
+                var mstOverride = context.GetOrEmpty("gdtMst");
                 filePath = fileProcessor.RelocateToInvoicePath(
-                    extractedFolder, downloadsRoot, rowFallback, buyerMst);
+                    extractedFolder, downloadsRoot, rowFallback, mstOverride, ResolveInvoiceKind(context));
                 if (!string.IsNullOrWhiteSpace(filePath))
                 {
                     context.Set("rowFilePath", filePath);
@@ -133,7 +133,7 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
                 var root = context.GetOrEmpty("downloadsRoot");
                 var mst = context.GetOrEmpty("gdtMst");
                 var finalized = await fileProcessor.FinalizeStagingFolderAsync(
-                    stagingFolder, root, mst, cancellationToken).ConfigureAwait(false);
+                    stagingFolder, root, mst, ResolveInvoiceKind(context), cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Batch finalize: {Count} invoice folder(s)", finalized.Count);
                 break;
             case "pauseforuser":
@@ -150,6 +150,12 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
         return filePath;
     }
 
+    private static string ResolveInvoiceKind(FlowContext context)
+    {
+        var invoiceKind = context.GetOrEmpty("invoiceKind");
+        return string.IsNullOrWhiteSpace(invoiceKind) ? InvoiceKinds.Purchase : invoiceKind;
+    }
+
     private static void SaveRowPathSidecar(FlowContext context, string rowFilePath)
     {
         var downloadsRoot = context.GetOrEmpty("downloadsRoot");
@@ -157,7 +163,12 @@ public sealed class PlaywrightStepExecutor : IStepExecutor
         if (string.IsNullOrWhiteSpace(downloadsRoot) || string.IsNullOrWhiteSpace(rowIndex))
             return;
 
-        StagingPaths.SaveRowPathSidecar(StagingPaths.Folder(downloadsRoot), rowIndex, rowFilePath);
+        var pageIndex = context.GetOrEmpty("pageIndex");
+        var sidecarKey = !string.IsNullOrWhiteSpace(pageIndex)
+            ? $"p{pageIndex}_{rowIndex}"
+            : rowIndex;
+
+        StagingPaths.SaveRowPathSidecar(StagingPaths.Folder(downloadsRoot), sidecarKey, rowFilePath);
     }
 
     private static async Task ExecuteWaitAsync(AutomationStep step, IAutomationPage page, int timeout, CancellationToken cancellationToken)

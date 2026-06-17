@@ -114,7 +114,57 @@ public partial class MainViewModel : ObservableObject
     private DateTime _toDate = DateTime.Today;
 
     [ObservableProperty]
-    private string _invoiceKind = "sales";
+    private string _invoiceKind = InvoiceKinds.Purchase;
+
+    public bool IsPurchaseInvoice
+    {
+        get => InvoiceKinds.IsPurchase(InvoiceKind);
+        set
+        {
+            if (value)
+                InvoiceKind = InvoiceKinds.Purchase;
+        }
+    }
+
+    public bool IsSalesInvoice
+    {
+        get => InvoiceKinds.IsSales(InvoiceKind);
+        set
+        {
+            if (value)
+                InvoiceKind = InvoiceKinds.Sales;
+        }
+    }
+
+    partial void OnInvoiceKindChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsPurchaseInvoice));
+        OnPropertyChanged(nameof(IsSalesInvoice));
+        RefreshLoadedInvoiceParties();
+    }
+
+    private void RefreshLoadedInvoiceParties()
+    {
+        if (Invoices.Count == 0)
+            return;
+
+        foreach (var invoice in Invoices)
+        {
+            if (!File.Exists(invoice.FilePath))
+                continue;
+
+            try
+            {
+                var parsed = ParseInvoice(invoice.FilePath);
+                invoice.TaxCode = parsed.TaxCode;
+                invoice.Supplier = parsed.Supplier;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not refresh invoice row for {Path}", invoice.FilePath);
+            }
+        }
+    }
 
     [ObservableProperty]
     private string _gdtMst = "";
@@ -667,15 +717,22 @@ public partial class MainViewModel : ObservableObject
                 ? DownloadsRoot
                 : InvoiceXMLDataPath;
 
-            var count = await Task.Run(() =>
+            var result = await Task.Run(() =>
                 InvoiceExportPaths.ExportAllDownloads(
-                    dataRoot, ExportRoot, _invoiceLookup.Value.PdfSubfolder)).ConfigureAwait(true);
+                    dataRoot, ExportRoot, InvoiceKind, _invoiceLookup.Value.PdfSubfolder)).ConfigureAwait(true);
 
             Directory.CreateDirectory(ExportRoot);
-            StatusMessage = count > 0
-                ? $"Đã export {count} file PDF/ZIP → {ExportRoot}"
-                : $"Không có file trong thư mục pdf\\ để export.";
-            _logger.LogInformation("Exported {Count} downloads to {ExportRoot}", count, ExportRoot);
+            StatusMessage = result.Exported > 0 || result.Relocated > 0
+                ? $"Export: {result.Exported} hóa đơn (XML + PDF) → {ExportRoot}"
+                  + (result.Relocated > 0 ? $"; đã sắp xếp lại {result.Relocated} trong thư mục dữ liệu" : "")
+                  + (result.Skipped > 0 ? $"; bỏ qua {result.Skipped}" : "")
+                : "Không có hóa đơn hợp lệ để export.";
+            _logger.LogInformation(
+                "Export: relocated={Relocated}, exported={Exported}, skipped={Skipped} → {ExportRoot}",
+                result.Relocated, result.Exported, result.Skipped, ExportRoot);
+
+            if (result.Relocated > 0)
+                await LoadInvoicesAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -746,16 +803,15 @@ public partial class MainViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(errorMessage))
             supplier = "[Lỗi tải] " + errorMessage;
 
+        var parties = InvoicePartyResolver.Resolve(doc, InvoiceKind);
+
         return new InvoiceFile
         {
             FilePath = filePath,
 
-            TaxCode =
-                doc.Descendants()
-                   .FirstOrDefault(x => x.Name.LocalName == "MST")
-                   ?.Value ?? "",
+            TaxCode = parties.OwnerMst,
 
-            Supplier = supplier,
+            Supplier = string.IsNullOrWhiteSpace(errorMessage) ? parties.CounterpartyName : supplier,
 
             InvoiceNo =
                 doc.Descendants()

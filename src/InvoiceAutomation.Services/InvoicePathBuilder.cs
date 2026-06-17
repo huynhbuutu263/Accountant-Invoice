@@ -7,13 +7,17 @@ namespace InvoiceAutomation.Services;
 /// <summary>Builds invoice folder paths from XML content (preferred) or GDT table row cells (fallback).</summary>
 public static class InvoicePathBuilder
 {
-    public static bool TryBuildFromXmlFile(string xmlFilePath, string? buyerMstOverride, out string relativePath)
+    public static bool TryBuildFromXmlFile(
+        string xmlFilePath,
+        string? mstOverride,
+        out string relativePath,
+        string invoiceKind = InvoiceKinds.Purchase)
     {
         relativePath = "";
         try
         {
             var doc = XDocument.Load(xmlFilePath);
-            return TryBuildFromDocument(doc, buyerMstOverride, out relativePath);
+            return TryBuildFromDocument(doc, mstOverride, out relativePath, invoiceKind);
         }
         catch
         {
@@ -21,7 +25,11 @@ public static class InvoicePathBuilder
         }
     }
 
-    public static bool TryBuildFromDocument(XDocument doc, string? buyerMstOverride, out string relativePath)
+    public static bool TryBuildFromDocument(
+        XDocument doc,
+        string? mstOverride,
+        out string relativePath,
+        string invoiceKind = InvoiceKinds.Purchase)
     {
         relativePath = "";
         if (IsErrorInvoiceDocument(doc))
@@ -30,20 +38,8 @@ public static class InvoicePathBuilder
         string? First(string localName) =>
             doc.Descendants().FirstOrDefault(x => x.Name.LocalName == localName)?.Value?.Trim();
 
-        string? FirstFromParty(string party, string localName) =>
-            doc.Descendants().FirstOrDefault(x => x.Name.LocalName == party)
-                ?.Elements().FirstOrDefault(x => x.Name.LocalName == localName)?.Value?.Trim();
-
-        var buyerMst = FirstFromParty("NMua", "MST");
-        if (string.IsNullOrWhiteSpace(buyerMst))
-            buyerMst = buyerMstOverride;
-        if (string.IsNullOrWhiteSpace(buyerMst))
-            return false;
-
-        var sellerName = FirstFromParty("NBan", "Ten");
-        if (string.IsNullOrWhiteSpace(sellerName))
-            sellerName = FirstFromParty("NBan", "MST") ?? First("Ten");
-        if (string.IsNullOrWhiteSpace(sellerName))
+        var parties = InvoicePartyResolver.Resolve(doc, invoiceKind, mstOverride);
+        if (string.IsNullOrWhiteSpace(parties.OwnerMst) || string.IsNullOrWhiteSpace(parties.CounterpartyName))
             return false;
 
         var serial = First("KHMSHDon");
@@ -59,28 +55,29 @@ public static class InvoicePathBuilder
             !TryParseInvoiceDate(dateRaw, out var issueDate))
             return false;
 
-        return TryBuildRelativePath(buyerMst, issueDate, invoiceNo, sellerName, out relativePath);
+        return TryBuildRelativePath(
+            parties.OwnerMst, issueDate, invoiceNo, parties.CounterpartyName, out relativePath);
     }
 
     public static bool TryBuildRelativePath(
-        string buyerMst,
+        string ownerMst,
         DateTime issueDate,
         string invoiceNo,
-        string sellerName,
+        string counterpartyName,
         out string relativePath)
     {
         relativePath = "";
-        if (string.IsNullOrWhiteSpace(buyerMst) ||
+        if (string.IsNullOrWhiteSpace(ownerMst) ||
             string.IsNullOrWhiteSpace(invoiceNo) ||
-            string.IsNullOrWhiteSpace(sellerName))
+            string.IsNullOrWhiteSpace(counterpartyName))
             return false;
 
         var exportDay = GdtRowPathBuilder.SanitizePathSegment(issueDate.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture));
         var month = GdtRowPathBuilder.SanitizePathSegment(issueDate.ToString("MM-yyyy", CultureInfo.InvariantCulture));
         var maHoaDon = GdtRowPathBuilder.SanitizePathSegment(invoiceNo);
-        var seller = GdtRowPathBuilder.SanitizePathSegment(sellerName);
-        var fileName = string.Join('_', exportDay, maHoaDon, seller);
-        relativePath = Path.Combine(GdtRowPathBuilder.SanitizePathSegment(buyerMst), month, fileName);
+        var counterparty = GdtRowPathBuilder.SanitizePathSegment(counterpartyName);
+        var fileName = string.Join('_', exportDay, maHoaDon, counterparty);
+        relativePath = Path.Combine(GdtRowPathBuilder.SanitizePathSegment(ownerMst), month, fileName);
         return !string.IsNullOrWhiteSpace(relativePath);
     }
 

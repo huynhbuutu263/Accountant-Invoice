@@ -12,12 +12,14 @@ public interface IFileProcessor
         string extractedFolderPath,
         string downloadsRoot,
         string? rowFallbackRelativePath,
-        string? buyerMstOverride = null);
+        string? mstOverride = null,
+        string invoiceKind = InvoiceKinds.Purchase);
 
     /// <summary>Extract all zips in staging, then relocate each folder using XML (row sidecar as fallback).</summary>
     Task<IReadOnlyList<string>> FinalizeStagingFolderAsync(
         string stagingFolder,
         string downloadsRoot,
-        string? buyerMstOverride = null,
+        string? mstOverride = null,
+        string invoiceKind = InvoiceKinds.Purchase,
         CancellationToken cancellationToken = default);
 }
