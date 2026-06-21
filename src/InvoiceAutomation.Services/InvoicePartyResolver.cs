@@ -29,6 +29,7 @@ public static class InvoicePartyResolver
         var sellerMst = FirstFromParty("NBan", "MST") ?? mstOverride ?? "";
         var buyerName = FirstFromParty("NMua", "Ten")
             ?? FirstFromParty("NMua", "MST")
+            ?? FirstFromParty("NMua", "HVTNMHang")
             ?? "";
         return new InvoicePartyInfo(sellerMst, buyerName);
     }
